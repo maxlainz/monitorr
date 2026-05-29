@@ -168,9 +168,9 @@ async def save_policy(
         return [item.strip() for item in value.replace(",", " ").split() if item.strip()]
 
     policy = Policy(
-        get_count=get_count,
+        get_count=max(0, get_count),
         get_unit="seasons" if get_unit == "seasons" else "episodes",
-        keep_count=keep_count,
+        keep_count=max(0, keep_count),
         keep_unit="seasons" if keep_unit == "seasons" else "episodes",
         always_have=_split(always_have) or ["S01E01"],
         grace_watched_days=_opt_int(grace_watched_days),
@@ -317,7 +317,11 @@ async def plex_webhook(secret: str, request: Request) -> dict[str, str]:
     raw = form.get("payload")
     if not isinstance(raw, str):
         return {"status": "ignored"}
-    event = parse_scrobble(json.loads(raw))
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {"status": "ignored"}
+    event = parse_scrobble(payload)
     if event is None:
         return {"status": "ignored"}
 
@@ -326,8 +330,13 @@ async def plex_webhook(secret: str, request: Request) -> dict[str, str]:
     client_id = await store.get_setting(constants.PLEX_CLIENT_ID)
     if not (server and token and client_id):
         return {"status": "unlinked"}
-    tvdb_id = await resolve_tvdb_id(server, token, client_id, event.grandparent_rating_key)
-    if tvdb_id is None:
-        return {"status": "no-tvdb"}
-    await process_watch(tvdb_id, event.season, event.episode)
+    # Devolvemos siempre 200 para que Plex no reintente ante un error puntual de Sonarr/Plex.
+    try:
+        tvdb_id = await resolve_tvdb_id(server, token, client_id, event.grandparent_rating_key)
+        if tvdb_id is None:
+            return {"status": "no-tvdb"}
+        await process_watch(tvdb_id, event.season, event.episode)
+    except Exception:
+        logger.exception("error procesando webhook de %s", event.grandparent_rating_key)
+        return {"status": "error"}
     return {"status": "ok"}

@@ -14,9 +14,9 @@ Unit = Literal["episodes", "seasons"]
 class Policy(BaseModel):
     """Parte de la configuración que se puede sobrescribir por serie."""
 
-    get_count: int = 1
+    get_count: int = Field(default=1, ge=0)
     get_unit: Unit = "episodes"
-    keep_count: int = 1
+    keep_count: int = Field(default=1, ge=0)
     keep_unit: Unit = "episodes"
     always_have: list[str] = Field(default_factory=lambda: ["S01E01"])
     grace_watched_days: int | None = 7
@@ -56,6 +56,9 @@ async def get_dry_run() -> bool:
 
 async def set_dry_run(value: bool) -> None:
     await store.set_setting(constants.DRY_RUN, "1" if value else "0")
+    # Al confiar en el modo real, los previews pendientes dejan de tener sentido.
+    if not value:
+        await store.clear_pending_deletions()
 
 
 async def get_watched_threshold() -> float:

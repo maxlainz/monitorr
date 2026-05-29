@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 def _age_days(iso_timestamp: str) -> float:
     moment = datetime.fromisoformat(iso_timestamp)
+    if moment.tzinfo is None:  # timestamps heredados sin zona → se asumen UTC
+        moment = moment.replace(tzinfo=UTC)
     return (datetime.now(UTC) - moment).total_seconds() / 86400
 
 

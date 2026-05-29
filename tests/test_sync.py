@@ -122,3 +122,60 @@ async def test_sync_skips_shows_not_in_sonarr() -> None:
 
     assert summary == {"shows": 1, "matched": 0}
     assert not leaves.called  # no se piden episodios de shows no gestionados
+
+
+@respx.mock
+async def test_sync_continues_when_one_series_errors() -> None:
+    """Una serie con error (allLeaves 500) no aborta la sync: la otra se procesa igual."""
+    await _configure_links()
+    await set_dry_run(False)
+
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"ratingKey": "100", "title": "OK", "Guid": [{"id": f"tvdb://{TVDB}"}]},
+                        {"ratingKey": "200", "title": "Boom", "Guid": [{"id": "tvdb://888"}]},
+                    ]
+                }
+            },
+        )
+    )
+    respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
+    )
+    respx.get(f"{PLEX}/library/metadata/200/allLeaves").mock(
+        return_value=httpx.Response(500)
+    )
+    # Ambas series gestionadas; 999 va primero para que find_series_by_tvdb devuelva la correcta.
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "OK", "tvdbId": TVDB},
+                {"id": 2, "title": "Boom", "tvdbId": 888},
+            ],
+        )
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=EPISODES)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+
+    summary = await sync.run_sync()
+
+    assert summary == {"shows": 2, "matched": 1}  # la que falla no cuenta, pero no aborta
+    assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {(1, 1), (1, 2)}
+    last = await sync.get_last_sync()  # se actualiza pese al error de una serie
+    assert last is not None and last["matched"] == 1

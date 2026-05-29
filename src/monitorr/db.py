@@ -41,6 +41,16 @@ MIGRATIONS: list[str] = [
         created_at      TEXT NOT NULL
     );
     """,
+    # Deduplica los previews (dry_run=1) a una fila por episodio: borra los antiguos y crea un
+    # índice único parcial. El historial de borrados reales (dry_run=0) sigue siendo append-only.
+    """
+    DELETE FROM deletion_log WHERE dry_run = 1 AND id NOT IN (
+        SELECT MAX(id) FROM deletion_log WHERE dry_run = 1
+        GROUP BY tvdb_id, season, episode
+    );
+    CREATE UNIQUE INDEX deletion_pending_unique
+        ON deletion_log (tvdb_id, season, episode) WHERE dry_run = 1;
+    """,
 ]
 
 

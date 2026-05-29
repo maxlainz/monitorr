@@ -168,13 +168,38 @@ async def record_deletion(
     reason: str,
     dry_run: bool,
 ) -> None:
+    """Registra un borrado. Los previews (dry_run=True) se deduplican a una fila por episodio;
+    un borrado real (dry_run=False) se añade al historial y retira el preview ya cumplido."""
     async with aiosqlite.connect(_db_path()) as db:
-        await db.execute(
-            "INSERT INTO deletion_log "
-            "(tvdb_id, season, episode, title, episode_file_id, reason, dry_run, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (tvdb_id, season, episode, title, episode_file_id, reason, int(dry_run), _now()),
-        )
+        if dry_run:
+            await db.execute(
+                "INSERT INTO deletion_log "
+                "(tvdb_id, season, episode, title, episode_file_id, reason, dry_run, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 1, ?) "
+                "ON CONFLICT(tvdb_id, season, episode) WHERE dry_run = 1 DO UPDATE SET "
+                "title = excluded.title, episode_file_id = excluded.episode_file_id, "
+                "reason = excluded.reason, created_at = excluded.created_at",
+                (tvdb_id, season, episode, title, episode_file_id, reason, _now()),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO deletion_log "
+                "(tvdb_id, season, episode, title, episode_file_id, reason, dry_run, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                (tvdb_id, season, episode, title, episode_file_id, reason, _now()),
+            )
+            await db.execute(
+                "DELETE FROM deletion_log "
+                "WHERE dry_run = 1 AND tvdb_id = ? AND season = ? AND episode = ?",
+                (tvdb_id, season, episode),
+            )
+        await db.commit()
+
+
+async def clear_pending_deletions() -> None:
+    """Vacía los previews pendientes (dry_run=1); el historial de borrados reales se conserva."""
+    async with aiosqlite.connect(_db_path()) as db:
+        await db.execute("DELETE FROM deletion_log WHERE dry_run = 1")
         await db.commit()
 
 

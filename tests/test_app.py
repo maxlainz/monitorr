@@ -35,3 +35,18 @@ def test_webhook_rejects_bad_secret() -> None:
     with TestClient(app) as client:
         response = client.post("/webhook/plex/wrong", data={"payload": "{}"})
         assert response.json() == {"status": "forbidden"}
+
+
+def test_save_policy_clamps_negative_counts() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/settings/policy",
+            data={"get_count": "-3", "keep_count": "-1"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        page = client.get("/settings")
+        # La política guardada no admite negativos (clamp a 0); no hay un 500 de validación.
+        assert page.status_code == 200
+        assert 'name="get_count" min="0" value="0"' in page.text
+        assert 'name="keep_count" min="0" value="0"' in page.text

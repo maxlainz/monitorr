@@ -61,16 +61,20 @@ async def _run() -> dict[str, int]:
             shows += 1
             if show.tvdb_id is None or show.tvdb_id not in managed:
                 continue
-            watched = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
-            if not watched:
-                continue
-            for episode in watched:
-                await store.record_watch(
-                    show.tvdb_id, episode.season, episode.episode, episode.viewed_at
-                )
-            anchor = max(watched, key=lambda e: (e.season, e.episode))
-            await apply_window(show.tvdb_id, anchor.season, anchor.episode)
-            matched += 1
+            # Una serie con error (404, timeout, episodio inexistente) no debe abortar la sync.
+            try:
+                watched = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
+                if not watched:
+                    continue
+                for episode in watched:
+                    await store.record_watch(
+                        show.tvdb_id, episode.season, episode.episode, episode.viewed_at
+                    )
+                anchor = max(watched, key=lambda e: (e.season, e.episode))
+                await apply_window(show.tvdb_id, anchor.season, anchor.episode)
+                matched += 1
+            except Exception:
+                logger.exception("error sincronizando tvdb=%s", show.tvdb_id)
 
     summary = {"shows": shows, "matched": matched}
     await store.set_setting(

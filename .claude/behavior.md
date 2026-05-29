@@ -7,12 +7,15 @@ El *cómo* de cada sistema externo vive en [`plex.md`](plex.md) (detección/corr
 ## Disparo
 
 El motor se activa cuando una serie se considera **vista hasta el episodio E** (ancla):
-- Por polling: `viewOffset/duration ≥ ~0.9` o la sesión casi completa desaparece.
+- Por polling: `viewOffset/duration ≥ ~0.9`, o una sesión que estaba **casi completa**
+  (`progress ≥ NEAR_COMPLETE_PROGRESS`, 0.85 en `constants.py`) **desaparece** entre sondeos
+  (el usuario terminó y la sesión se cerró antes de cruzar el umbral).
 - Por webhook opcional: evento `media.scrobble`.
 
 Cada disparo recalcula la ventana de **esa serie** alrededor de E. El disparo es idempotente:
-volver a recibir el mismo E no debe producir cambios (debounce en la fuente, ver
-[`plex.md`](plex.md)).
+el debounce del poller usa la clave `(sessionKey, temporada, episodio)`, no solo `sessionKey`
+(Plex puede reutilizar el `sessionKey` al auto-reproducir el siguiente episodio de un binge, así
+que avanzar de episodio dispara, pero re-sondear el mismo no).
 
 ## Ventana
 
@@ -50,6 +53,11 @@ monitorr **no realiza ninguna escritura en Sonarr**: ni monitorizar, ni buscar, 
 borrados quedan como **pendientes** para revisar. Aplica a todo (lógica en vivo y
 [sincronización](#sincronización--reconciliación)). Centralizado en `engine/actions.py`. Cuando
 confías en el comportamiento, lo desactivas en Ajustes y todo pasa a ejecutarse de verdad.
+
+Los **previews** pendientes se **deduplican** (una fila por episodio: el barrido de grace y la
+sync re-previsualizan en cada ciclo sin acumular duplicados) y se **auto-limpian**: al borrar el
+episodio de verdad se retira su preview, y al desactivar dry-run se vacían todos. El historial de
+borrados reales se conserva siempre.
 
 ## Forzar a Pilot (opt-in)
 
@@ -96,3 +104,7 @@ botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el d
   Limitación conocida: anime con numeración absoluta puede no ordenarse como se espera.
 - **Multiusuario**: fuera de v1 (se asume un consumidor). Hay **filtro opcional de usuarios**
   en Ajustes para limitar qué reproducciones disparan acciones.
+- **Sync resiliente**: una serie con error (404, timeout, episodio inexistente) se loguea y se
+  salta; no aborta el resto de la sincronización ni deja `last_sync` sin actualizar.
+- **Sesión sin TVDB**: se avisa una vez y se cachea para no re-resolver (ni re-avisar) en cada
+  sondeo; se reintenta cuando esa serie vuelve a reproducirse.
