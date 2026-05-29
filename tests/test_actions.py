@@ -56,6 +56,7 @@ async def test_normalize_keeps_always_have_file() -> None:
     )
     respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
     respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
 
     # E2 protegido por Always-Have: se desmonitoriza pero NO se borra.
     await actions.normalize_to_pilot(
@@ -63,3 +64,33 @@ async def test_normalize_keeps_always_have_file() -> None:
     )
 
     assert not delete.called
+
+
+@respx.mock
+async def test_cancel_downloads_removes_from_queue_keeping_seed() -> None:
+    respx.get(f"{SONARR}/queue").mock(
+        return_value=httpx.Response(
+            200, json={"records": [{"id": 5, "episodeId": 102}, {"id": 6, "episodeId": 777}]}
+        )
+    )
+    delete = respx.delete(url__regex=r"http://sonarr:8989/api/v3/queue/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+
+    await actions.cancel_downloads("http://sonarr:8989", "key", [102], dry_run=False)
+
+    assert delete.call_count == 1  # solo el ítem del episodio 102 (id 5)
+    url = str(delete.calls[0].request.url)
+    assert "/queue/5" in url
+    assert "removeFromClient=false" in url  # se deja sembrando
+
+
+@respx.mock
+async def test_cancel_downloads_dry_run_makes_no_calls() -> None:
+    queue = respx.get(f"{SONARR}/queue").mock(
+        return_value=httpx.Response(200, json={"records": []})
+    )
+
+    await actions.cancel_downloads("http://sonarr:8989", "key", [102], dry_run=True)
+
+    assert not queue.called

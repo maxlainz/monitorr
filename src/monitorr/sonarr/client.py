@@ -111,3 +111,38 @@ async def delete_episode_file(base_url: str, api_key: str, episode_file_id: int)
     async with _client(base_url, api_key) as client:
         response = await client.delete(f"/episodefile/{episode_file_id}")
         response.raise_for_status()
+
+
+class QueueItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: int
+    episode_id: int = Field(alias="episodeId", default=0)
+
+
+async def get_queue(base_url: str, api_key: str) -> list[QueueItem]:
+    async with _client(base_url, api_key) as client:
+        response = await client.get("/queue", params={"pageSize": 1000})
+        response.raise_for_status()
+        records = response.json().get("records", [])
+        return [QueueItem.model_validate(item) for item in records]
+
+
+async def delete_queue_item(
+    base_url: str,
+    api_key: str,
+    queue_id: int,
+    remove_from_client: bool = False,
+    blocklist: bool = False,
+) -> None:
+    """Quita un ítem de la cola. Con remove_from_client=False el torrent sigue en el cliente
+    (sembrando hasta su ratio); Sonarr deja de seguirlo y no lo importa."""
+    async with _client(base_url, api_key) as client:
+        response = await client.delete(
+            f"/queue/{queue_id}",
+            params={
+                "removeFromClient": str(remove_from_client).lower(),
+                "blocklist": str(blocklist).lower(),
+            },
+        )
+        response.raise_for_status()

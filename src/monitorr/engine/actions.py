@@ -36,6 +36,27 @@ async def search_episodes(
     await sonarr.search_episodes(base_url, api_key, episode_ids)
 
 
+async def cancel_downloads(
+    base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
+) -> None:
+    """Saca de la cola de Sonarr las descargas en curso de estos episodios (no se importan).
+    El torrent se queda en el cliente sembrando hasta su ratio. Guardado por dry-run."""
+    if not episode_ids:
+        return
+    if dry_run:
+        logger.info("[dry-run] cancelaría descargas en cola de %d episodios", len(episode_ids))
+        return
+    wanted = set(episode_ids)
+    for item in await sonarr.get_queue(base_url, api_key):
+        if item.episode_id in wanted:
+            await sonarr.delete_queue_item(
+                base_url, api_key, item.id, remove_from_client=False, blocklist=False
+            )
+            logger.info(
+                "descarga en cola cancelada (episodeId=%s); sigue sembrando", item.episode_id
+            )
+
+
 async def normalize_to_pilot(
     base_url: str,
     api_key: str,
@@ -64,12 +85,16 @@ async def normalize_to_pilot(
     for episode in to_delete:
         await delete_episode(base_url, api_key, tvdb_id, episode, "normalize", dry_run)
 
+    if not dry_run and to_unmonitor:
+        await sonarr.set_monitored(base_url, api_key, to_unmonitor, False)
+
+    # Los desmonitorizados que aún se estén descargando: sacarlos de la cola (no importarlos).
+    await cancel_downloads(base_url, api_key, to_unmonitor, dry_run)
+
     if dry_run:
         logger.info("[dry-run] dejaría solo el piloto monitorizado en %s", series.title)
         return
 
-    if to_unmonitor:
-        await sonarr.set_monitored(base_url, api_key, to_unmonitor, False)
     if pilot is not None:
         await sonarr.set_monitored(base_url, api_key, [pilot.id], True)
         if not pilot.has_file:

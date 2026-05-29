@@ -58,6 +58,11 @@ buscándolo si le falta fichero. Los episodios **ya descargados** que quedan des
 ahí la ventana (GET) monitoriza hacia delante episodio a episodio. Quita la necesidad de configurar
 "Monitor: Pilot" a mano en Sonarr. Nunca es automática; respeta dry-run.
 
+**Episodios desmonitorizados que aún se están descargando** (no importados): se sacan de la cola de
+Sonarr (`DELETE /queue/{id}` con `removeFromClient=false`) para que **no se importen**; el torrent
+se queda en el cliente sembrando hasta su ratio, que lo elimina el propio cliente de descargas (no
+monitorr). Sin desmonitorizar antes, Sonarr importaría igualmente la descarga ya iniciada.
+
 ## Sincronización / reconciliación
 
 La detección en vivo (poller + webhook) solo dispara al ver un episodio. La **sync** reconcilia el
