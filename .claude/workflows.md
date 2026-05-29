@@ -75,6 +75,7 @@ se edita por la Web UI. Definidas en [`config.py`](../src/monitorr/config.py).
 | `MONITORR_PORT` | Puerto de escucha | `8080` | no |
 | `MONITORR_LOG_LEVEL` | Nivel de log | `INFO` | no |
 | `MONITORR_PLEX_POLL_INTERVAL` | Segundos entre polls de sesiones | `30` | no |
+| `MONITORR_GRACE_SWEEP_INTERVAL` | Segundos entre barridos de grace periods | `3600` | no |
 | `MONITORR_WEBHOOK_SECRET` | Token del endpoint webhook opcional | (vacío) | no |
 | `TZ` | Zona horaria (grace periods) | `UTC` | no |
 

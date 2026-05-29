@@ -7,6 +7,9 @@ visionado y correlación con Sonarr.
 > Restricción de diseño: Plex pone difícil obtener el `X-Plex-Token` a mano. Por eso la
 > vinculación es **"Login with Plex"** (flujo PIN/OAuth), no un token pegado en config.
 
+> Implementado en [`src/monitorr/plex/`](../src/monitorr/plex) (`auth.py`, `client.py`,
+> `poller.py`, `webhook.py`).
+
 ## Identidad del cliente
 
 monitorr genera **una vez** un `X-Plex-Client-Identifier` (UUID estable) y lo **persiste**.

@@ -12,6 +12,35 @@ MIGRATIONS: list[str] = [
         value TEXT NOT NULL
     );
     """,
+    """
+    CREATE TABLE series_override (
+        tvdb_id     INTEGER PRIMARY KEY,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        policy_json TEXT
+    );
+    CREATE TABLE episode_watch (
+        tvdb_id    INTEGER NOT NULL,
+        season     INTEGER NOT NULL,
+        episode    INTEGER NOT NULL,
+        watched_at TEXT NOT NULL,
+        PRIMARY KEY (tvdb_id, season, episode)
+    );
+    CREATE TABLE series_activity (
+        tvdb_id       INTEGER PRIMARY KEY,
+        last_watch_at TEXT NOT NULL
+    );
+    CREATE TABLE deletion_log (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        tvdb_id         INTEGER NOT NULL,
+        season          INTEGER NOT NULL,
+        episode         INTEGER NOT NULL,
+        title           TEXT,
+        episode_file_id INTEGER,
+        reason          TEXT NOT NULL,
+        dry_run         INTEGER NOT NULL,
+        created_at      TEXT NOT NULL
+    );
+    """,
 ]
 
 

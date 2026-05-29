@@ -61,8 +61,7 @@ Organizados por dominio (no por capa):
 
 ## Decisiones pendientes
 
-- Esquema SQLite del estado (tokens, grace por serie/episodio, debounce, historial).
-- Estrategia de debounce del poller (cómo evitar re-disparos del mismo episodio).
-- Orden aired vs absolute (anime) y tratamiento de especiales `S00`.
+- Orden aired vs absolute (anime): el MVP usa orden aired; soportar absolute más adelante.
 - Soporte multiusuario (riesgo de borrar lo que otro no ha visto) — fuera de v1.
 - Login propio de la Web UI (v1 asume LAN de confianza / reverse proxy).
+- Editar la política por serie (override) desde la UI; hoy el override solo activa/desactiva.

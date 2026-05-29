@@ -52,13 +52,20 @@ Sirve para validar reglas antes de activar el borrado real. No afecta a la monit
 - **Global única**: una política (GET, KEEP, Always-Have, grace, dry-run) para todas las series.
 - **Override por serie**: ajustes manuales que sustituyen la política global en series concretas.
 
-## Edge cases (a resolver en el diseño técnico)
+## Unidad temporadas (semántica)
 
-- **Cruce de temporada**: el "siguiente" episodio de GET puede estar en la temporada siguiente;
-  la ventana razona en orden de emisión, no por temporada aislada.
-- **Orden aired vs absolute (anime)**: discrepancias entre `episodeNumber` y
-  `absoluteEpisodeNumber`; decidir qué orden manda según `seriesType`/numeración de Sonarr.
-- **Especiales (`S00`)**: por defecto fuera de GET/KEEP; definir si se ignoran siempre.
-- **Multiusuario** (fuera de v1): si varios espectadores ven la misma serie, KEEP/grace podría
-  borrar lo que otro no ha visto. v1 asume un consumidor; documentado como pendiente.
-- **Episodio sin fichero** (`hasFile:false`): no hay nada que borrar; solo aplica monitorización.
+- **GET por temporadas (N)**: monitoriza los episodios tras E con `season ≤ E.season + N`
+  (resto de la temporada actual + las N siguientes).
+- **KEEP por temporadas (N)**: conserva los episodios con `season ≥ E.season − (N−1)`; borra
+  los de temporadas más antiguas.
+
+## Edge cases (resueltos en el MVP)
+
+- **Cruce de temporada**: la ventana razona en **orden de emisión** `(season, episode)`, no por
+  temporada aislada; el "siguiente" puede caer en la temporada siguiente.
+- **Especiales (`S00`)**: **excluidos** de GET/KEEP/grace.
+- **Episodio sin fichero** (`hasFile:false`): no hay nada que borrar; solo monitorización.
+- **Orden aired vs absolute (anime)**: el MVP usa siempre orden aired `(season, episode)`.
+  Limitación conocida: anime con numeración absoluta puede no ordenarse como se espera.
+- **Multiusuario**: fuera de v1 (se asume un consumidor). Hay **filtro opcional de usuarios**
+  en Ajustes para limitar qué reproducciones disparan acciones.

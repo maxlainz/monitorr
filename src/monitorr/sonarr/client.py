@@ -1,35 +1,113 @@
 """Cliente Sonarr (API v3/v4). Ver .claude/sonarr.md para endpoints y gotchas."""
 
-from typing import Any
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
+from monitorr import constants, store
+
+_TIMEOUT = 30.0
 
 
-async def find_series_by_tvdb(base_url: str, api_key: str, tvdb_id: int) -> dict[str, Any] | None:
-    """GET /api/v3/series?tvdbId={id} → serie o None si no está en Sonarr."""
-    raise NotImplementedError  # TODO(sonarr)
+class SonarrSeries(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: int
+    title: str
+    tvdb_id: int = Field(alias="tvdbId")
+    series_type: str = Field(alias="seriesType", default="standard")
 
 
-async def get_episodes(base_url: str, api_key: str, series_id: int) -> list[dict[str, Any]]:
-    """GET /api/v3/episode?seriesId={id}."""
-    raise NotImplementedError  # TODO(sonarr)
+class SonarrEpisode(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: int
+    season_number: int = Field(alias="seasonNumber")
+    episode_number: int = Field(alias="episodeNumber")
+    absolute_episode_number: int | None = Field(alias="absoluteEpisodeNumber", default=None)
+    title: str | None = None
+    monitored: bool = False
+    has_file: bool = Field(alias="hasFile", default=False)
+    episode_file_id: int = Field(alias="episodeFileId", default=0)
+    air_date_utc: str | None = Field(alias="airDateUtc", default=None)
+
+
+async def get_config() -> tuple[str, str] | None:
+    base_url = await store.get_setting(constants.SONARR_URL)
+    api_key = await store.get_setting(constants.SONARR_API_KEY)
+    if not base_url or not api_key:
+        return None
+    return base_url.rstrip("/"), api_key
+
+
+def _client(base_url: str, api_key: str) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=f"{base_url.rstrip('/')}/api/v3",
+        headers={"X-Api-Key": api_key},
+        timeout=_TIMEOUT,
+    )
+
+
+async def system_status(base_url: str, api_key: str) -> str | None:
+    """Versión de Sonarr si la conexión funciona, si no None (para el botón 'probar')."""
+    try:
+        async with _client(base_url, api_key) as client:
+            response = await client.get("/system/status")
+            response.raise_for_status()
+            data = response.json()
+            return str(data.get("version", "ok"))
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+async def find_series_by_tvdb(base_url: str, api_key: str, tvdb_id: int) -> SonarrSeries | None:
+    async with _client(base_url, api_key) as client:
+        response = await client.get("/series", params={"tvdbId": tvdb_id})
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            return None
+        return SonarrSeries.model_validate(data[0])
+
+
+async def list_series(base_url: str, api_key: str) -> list[SonarrSeries]:
+    async with _client(base_url, api_key) as client:
+        response = await client.get("/series")
+        response.raise_for_status()
+        return [SonarrSeries.model_validate(item) for item in response.json()]
+
+
+async def get_episodes(base_url: str, api_key: str, series_id: int) -> list[SonarrEpisode]:
+    async with _client(base_url, api_key) as client:
+        response = await client.get("/episode", params={"seriesId": series_id})
+        response.raise_for_status()
+        return [SonarrEpisode.model_validate(item) for item in response.json()]
 
 
 async def set_monitored(
     base_url: str, api_key: str, episode_ids: list[int], monitored: bool
 ) -> None:
-    """PUT /api/v3/episode/monitor {episodeIds, monitored}."""
-    raise NotImplementedError  # TODO(sonarr)
+    if not episode_ids:
+        return
+    async with _client(base_url, api_key) as client:
+        response = await client.put(
+            "/episode/monitor",
+            json={"episodeIds": episode_ids, "monitored": monitored},
+        )
+        response.raise_for_status()
 
 
 async def search_episodes(base_url: str, api_key: str, episode_ids: list[int]) -> None:
-    """POST /api/v3/command {name: EpisodeSearch, episodeIds}. Monitorizar no descarga."""
-    raise NotImplementedError  # TODO(sonarr)
-
-
-async def list_episode_files(base_url: str, api_key: str, series_id: int) -> list[dict[str, Any]]:
-    """GET /api/v3/episodefile?seriesId={id}."""
-    raise NotImplementedError  # TODO(sonarr)
+    if not episode_ids:
+        return
+    async with _client(base_url, api_key) as client:
+        response = await client.post(
+            "/command",
+            json={"name": "EpisodeSearch", "episodeIds": episode_ids},
+        )
+        response.raise_for_status()
 
 
 async def delete_episode_file(base_url: str, api_key: str, episode_file_id: int) -> None:
-    """DELETE /api/v3/episodefile/{id} → borra el fichero físico del disco."""
-    raise NotImplementedError  # TODO(sonarr)
+    async with _client(base_url, api_key) as client:
+        response = await client.delete(f"/episodefile/{episode_file_id}")
+        response.raise_for_status()

@@ -4,6 +4,8 @@ Control saliente de monitorr **solo vía API** (sin acceso al disco). Sonarr es 
 monitoriza, busca/descarga y borra ficheros; monitorr solo le da órdenes. La lógica de
 cuándo dar esas órdenes vive en [`behavior.md`](behavior.md).
 
+> Implementado en [`src/monitorr/sonarr/client.py`](../src/monitorr/sonarr/client.py).
+
 ## Conexión y auth
 
 - Base: `http://<host>:8989/api/v3`. Auth por cabecera `X-Api-Key` (o `?apikey=`).

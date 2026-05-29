@@ -1,17 +1,54 @@
 {% extends "base.html" %}
 {% block title %}monitorr — Estado{% endblock %}
 {% block content %}
-<hgroup>
-  <h1>monitorr</h1>
-  <p>Aún no configurado.</p>
-</hgroup>
+<h1>Estado</h1>
+
+{% if dry_run %}
+<article style="border-left: 4px solid var(--pico-primary);">
+  <strong>Modo dry-run activo.</strong> No se borra nada: los borrados se registran como
+  <a href="/deletions">pendientes</a> ({{ pending|length }}). Desactívalo en
+  <a href="/settings">Ajustes</a> cuando lo hayas revisado.
+</article>
+{% endif %}
+
+<div class="grid">
+  <article>
+    <header><strong>Plex</strong></header>
+    {% if plex.linked %}
+      <p>✅ Vinculado a <strong>{{ plex.name }}</strong>.</p>
+    {% else %}
+      <p>⚠️ Sin vincular. Ve a <a href="/settings">Ajustes</a>.</p>
+    {% endif %}
+  </article>
+  <article>
+    <header><strong>Sonarr</strong></header>
+    {% if sonarr_configured %}
+      <p>✅ Configurado.</p>
+    {% else %}
+      <p>⚠️ Sin configurar. Ve a <a href="/settings">Ajustes</a>.</p>
+    {% endif %}
+  </article>
+</div>
+
 <article>
-  <p>
-    Para empezar: vincula tu servidor Plex con <em>Login with Plex</em> y configura la conexión
-    con Sonarr en <a href="/settings">Ajustes</a>.
-  </p>
-  <footer>
-    <small>La detección de visionado y la gestión de episodios aún no están implementadas.</small>
-  </footer>
+  <header><strong>Borrados recientes</strong></header>
+  {% if deletions %}
+  <table>
+    <thead><tr><th>Serie</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th><th></th></tr></thead>
+    <tbody>
+      {% for d in deletions %}
+      <tr>
+        <td>{{ d.tvdb_id }}</td>
+        <td>S{{ "%02d"|format(d.season) }}E{{ "%02d"|format(d.episode) }}</td>
+        <td>{{ d.reason }}</td>
+        <td>{{ d.created_at[:19] }}</td>
+        <td>{% if d.dry_run %}<small>dry-run</small>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>Sin actividad de borrado todavía.</p>
+  {% endif %}
 </article>
 {% endblock %}

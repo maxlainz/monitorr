@@ -5,22 +5,96 @@
 
 <article>
   <header><strong>Plex</strong></header>
-  <p>Vinculación por <em>Login with Plex</em>.</p>
-  <button disabled>Vincular con Plex (pendiente)</button>
+  {% if plex.linked %}
+    <p>✅ Vinculado a <strong>{{ plex.name }}</strong>.</p>
+    <form method="post" action="/plex/unlink">
+      <button type="submit" class="secondary">Desvincular</button>
+    </form>
+  {% else %}
+    <p>Vincula tu cuenta con <em>Login with Plex</em> (no requiere token manual).</p>
+    <button hx-post="/plex/link" hx-target="#plex-link" hx-swap="outerHTML">Vincular con Plex</button>
+    <div id="plex-link"></div>
+  {% endif %}
 </article>
 
 <article>
   <header><strong>Sonarr</strong></header>
-  <form>
+  <form method="post" action="/settings/sonarr">
+    <label>URL de Sonarr
+      <input type="url" name="sonarr_url" value="{{ sonarr_url }}" placeholder="http://sonarr:8989" required />
+    </label>
+    <label>API Key
+      <input type="password" name="sonarr_api_key" placeholder="{% if sonarr_configured %}(sin cambios){% endif %}" required />
+    </label>
+    <div class="grid">
+      <button type="submit">Guardar</button>
+      <button type="button" class="secondary"
+              hx-post="/settings/sonarr/test" hx-include="closest form" hx-target="#sonarr-test">
+        Probar conexión
+      </button>
+    </div>
+  </form>
+  <div id="sonarr-test"></div>
+</article>
+
+<article>
+  <header><strong>Política global</strong></header>
+  <form method="post" action="/settings/policy">
+    <div class="grid">
+      <label>GET (por delante)
+        <input type="number" name="get_count" min="0" value="{{ policy.get_count }}" />
+      </label>
+      <label>Unidad GET
+        <select name="get_unit">
+          <option value="episodes" {% if policy.get_unit == "episodes" %}selected{% endif %}>episodios</option>
+          <option value="seasons" {% if policy.get_unit == "seasons" %}selected{% endif %}>temporadas</option>
+        </select>
+      </label>
+      <label>KEEP (por detrás)
+        <input type="number" name="keep_count" min="0" value="{{ policy.keep_count }}" />
+      </label>
+      <label>Unidad KEEP
+        <select name="keep_unit">
+          <option value="episodes" {% if policy.keep_unit == "episodes" %}selected{% endif %}>episodios</option>
+          <option value="seasons" {% if policy.keep_unit == "seasons" %}selected{% endif %}>temporadas</option>
+        </select>
+      </label>
+    </div>
+
+    <label>Always-Have (proteger; ej. <code>S01E01 S*E01</code>)
+      <input type="text" name="always_have" value="{{ policy.always_have|join(' ') }}" />
+    </label>
+
+    <div class="grid">
+      <label>Grace watched (días)
+        <input type="number" name="grace_watched_days" min="0" value="{{ policy.grace_watched_days if policy.grace_watched_days is not none else '' }}" />
+      </label>
+      <label>Grace unwatched (días)
+        <input type="number" name="grace_unwatched_days" min="0" value="{{ policy.grace_unwatched_days if policy.grace_unwatched_days is not none else '' }}" />
+      </label>
+      <label>Dormant (días)
+        <input type="number" name="dormant_days" min="0" value="{{ policy.dormant_days if policy.dormant_days is not none else '' }}" />
+      </label>
+    </div>
+
+    <label>Umbral de "visto" (0–1)
+      <input type="number" name="watched_threshold" step="0.05" min="0" max="1" value="{{ watched_threshold }}" />
+    </label>
+
+    <label>Filtro de usuarios Plex (vacío = todos; separa por comas)
+      <input type="text" name="user_filter" value="{{ user_filter }}" />
+    </label>
+
     <label>
-      URL de Sonarr
-      <input type="url" name="sonarr_url" placeholder="http://sonarr:8989" disabled />
+      <input type="checkbox" name="search_on_get" {% if policy.search_on_get %}checked{% endif %} />
+      Buscar en Sonarr al monitorizar por delante
     </label>
     <label>
-      API Key
-      <input type="password" name="sonarr_api_key" disabled />
+      <input type="checkbox" name="dry_run" {% if dry_run %}checked{% endif %} />
+      Modo dry-run (simula borrados, no borra)
     </label>
-    <button type="submit" disabled>Guardar (pendiente)</button>
+
+    <button type="submit">Guardar política</button>
   </form>
 </article>
 {% endblock %}

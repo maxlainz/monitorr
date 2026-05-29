@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "INFO"
     plex_poll_interval: int = 30
+    grace_sweep_interval: int = 3600
     webhook_secret: str = ""
 
     @property
