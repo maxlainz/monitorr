@@ -41,15 +41,35 @@ Complementan a KEEP con criterio temporal (días sin actividad de la serie):
 Requiere **persistir estado** por serie/episodio (último visto, primer no visto, última
 actividad). Los grace periods también respetan Always-Have.
 
-## Dry-run
+## Dry-run (interruptor maestro)
 
-Modo global de simulación: el motor calcula los borrados y los **registra sin ejecutarlos**.
-Sirve para validar reglas antes de activar el borrado real. No afecta a la monitorización
-(GET), solo a los borrados (KEEP/grace).
+`dry_run` es el **interruptor maestro de seguridad**, **ON por defecto**. Con dry-run ON,
+monitorr **no realiza ninguna escritura en Sonarr**: ni monitorizar, ni buscar, ni
+[forzar a Pilot](#forzar-a-pilot-opt-in), ni borrar. Solo registra/loguea lo que haría; los
+borrados quedan como **pendientes** para revisar. Aplica a todo (lógica en vivo y
+[sincronización](#sincronización--reconciliación)). Centralizado en `engine/actions.py`. Cuando
+confías en el comportamiento, lo desactivas en Ajustes y todo pasa a ejecutarse de verdad.
+
+## Forzar a Pilot (opt-in)
+
+Acción **manual** por serie ("Normalizar a Pilot"): desmonitoriza todos los episodios en Sonarr y
+deja monitorizado solo el piloto (`S01E01`), buscándolo si le falta fichero. A partir de ahí la
+ventana (GET) monitoriza hacia delante episodio a episodio. Quita la necesidad de configurar
+"Monitor: Pilot" a mano en Sonarr. Nunca es automática; respeta dry-run.
+
+## Sincronización / reconciliación
+
+La detección en vivo (poller + webhook) solo dispara al ver un episodio. La **sync** reconcilia el
+estado visto leyendo la biblioteca de Plex (ver [`plex.md`](plex.md)): por cada serie gestionada por
+Sonarr, registra los episodios vistos con su fecha real (alimenta los grace periods) y aplica la
+ventana para el **último visto**. Cubre tres casos que el modo en vivo no ve: series ya empezadas al
+instalar, episodios marcados a mano en Plex, y visionados con monitorr apagado. Se dispara con el
+botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el dry-run del motor.
 
 ## Configuración
 
-- **Global única**: una política (GET, KEEP, Always-Have, grace, dry-run) para todas las series.
+- **Global única**: una política (GET, KEEP, Always-Have, grace) para todas las series + el
+  interruptor dry-run.
 - **Override por serie**: ajustes manuales que sustituyen la política global en series concretas.
 
 ## Unidad temporadas (semántica)

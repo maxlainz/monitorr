@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -7,8 +8,9 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from monitorr import constants, store
+from monitorr import constants, store, sync
 from monitorr.config import get_settings
+from monitorr.engine import actions
 from monitorr.engine.policy import (
     Policy,
     get_dry_run,
@@ -38,6 +40,9 @@ router = APIRouter()
 
 _PIN_ID = "plex_pin_id"
 _PIN_CODE = "plex_pin_code"
+
+# Mantener referencia a las tareas de fondo lanzadas desde rutas para que no las recoja el GC.
+_bg_tasks: set[asyncio.Task[dict[str, int]]] = set()
 
 
 def _forward_url(request: Request) -> str:
@@ -71,6 +76,8 @@ async def index(request: Request) -> HTMLResponse:
         "dry_run": await get_dry_run(),
         "deletions": await store.list_deletions(limit=10),
         "pending": await store.list_deletions(limit=1000, dry_run=True),
+        "last_sync": await sync.get_last_sync(),
+        "sync_running": sync.is_running(),
     }
     return templates.TemplateResponse(request, "index.html", context)
 
@@ -260,6 +267,33 @@ async def plex_unlink() -> RedirectResponse:
 async def series_override(tvdb_id: int, enabled: str | None = Form(None)) -> RedirectResponse:
     await store.set_override(tvdb_id, enabled is not None, None)
     return RedirectResponse(url="/series", status_code=303)
+
+
+@router.post("/series/{tvdb_id}/normalize")
+async def series_normalize(tvdb_id: int) -> RedirectResponse:
+    """Fuerza la monitorización a solo-Pilot (opt-in). Respeta dry-run."""
+    cfg = await sonarr.get_config()
+    if cfg is not None:
+        base_url, api_key = cfg
+        series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
+        if series is not None:
+            episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            await actions.normalize_to_pilot(
+                base_url, api_key, series, episodes, await get_dry_run()
+            )
+    return RedirectResponse(url="/series", status_code=303)
+
+
+# --- sincronización ---
+
+
+@router.post("/sync")
+async def trigger_sync() -> RedirectResponse:
+    if not sync.is_running():
+        task = asyncio.create_task(sync.run_sync())
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+    return RedirectResponse(url="/", status_code=303)
 
 
 # --- webhook opcional ---

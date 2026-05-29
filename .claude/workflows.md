@@ -76,6 +76,8 @@ se edita por la Web UI. Definidas en [`config.py`](../src/monitorr/config.py).
 | `MONITORR_LOG_LEVEL` | Nivel de log | `INFO` | no |
 | `MONITORR_PLEX_POLL_INTERVAL` | Segundos entre polls de sesiones | `30` | no |
 | `MONITORR_GRACE_SWEEP_INTERVAL` | Segundos entre barridos de grace periods | `3600` | no |
+| `MONITORR_SYNC_INTERVAL` | Segundos entre sincronizaciones del estado visto (`0` desactiva) | `21600` | no |
+| `MONITORR_SYNC_ON_STARTUP` | Sincronizar una vez al arrancar si nunca se hizo | `true` | no |
 | `MONITORR_WEBHOOK_SECRET` | Token del endpoint webhook opcional | (vacío) | no |
 | `TZ` | Zona horaria (grace periods) | `UTC` | no |
 

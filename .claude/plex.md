@@ -80,6 +80,18 @@ serie, así que el camino fiable es resolver el metadato de la serie:
 - Con ese `tvdbId` + `parentIndex` (temporada) + `index` (episodio) se localiza el episodio
   exacto en Sonarr (ver [`sonarr.md`](sonarr.md)).
 
+## Escaneo de biblioteca (sincronización)
+
+La [sincronización](behavior.md) reconstruye "hasta qué episodio se ha visto cada serie" sin
+esperar a una reproducción, recorriendo la biblioteca:
+
+- `GET {serverUri}/library/sections` → secciones; quedarse con `type=="show"` (TV).
+- `GET {serverUri}/library/sections/{key}/all?type=2&includeGuids=1` → series con `ratingKey`,
+  `title` y `Guid[]` (→ tvdb).
+- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → todos los episodios con
+  `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Vistos = `viewCount>0`; el ancla es el
+  máximo `(season, episode)` visto, y `lastViewedAt` siembra la fecha real para los grace periods.
+
 ## Pitfalls
 
 - **El PIN caduca rápido**: no reutilizar un `id` viejo; regenerar si el polling no resuelve.

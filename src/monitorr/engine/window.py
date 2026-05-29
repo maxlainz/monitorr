@@ -5,7 +5,7 @@ Ver .claude/behavior.md. Se dispara al detectar "serie vista hasta el episodio E
 
 import logging
 
-from monitorr.engine.actions import delete_episode
+from monitorr.engine import actions
 from monitorr.engine.policy import Policy, effective_policy, get_dry_run, matches_always_have
 from monitorr.sonarr import client as sonarr
 from monitorr.sonarr.client import SonarrEpisode
@@ -60,15 +60,18 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         logger.warning("S%02dE%02d no encontrado en Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
 
+    dry_run = await get_dry_run()
+
     # GET: monitorizar (y buscar) por delante.
     ahead = _select_ahead(real, idx, policy)
     if ahead:
-        await sonarr.set_monitored(base_url, api_key, [e.id for e in ahead], True)
+        await actions.monitor_episodes(base_url, api_key, [e.id for e in ahead], dry_run)
         if policy.search_on_get:
-            await sonarr.search_episodes(base_url, api_key, [e.id for e in ahead if not e.has_file])
+            await actions.search_episodes(
+                base_url, api_key, [e.id for e in ahead if not e.has_file], dry_run
+            )
 
     # KEEP: borrar por detrás lo que cae fuera de la ventana, salvo Always-Have.
-    dry_run = await get_dry_run()
     for i in range(idx):
         candidate = real[i]
         if not candidate.has_file:
@@ -79,4 +82,4 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
             policy.always_have, candidate.season_number, candidate.episode_number
         ):
             continue
-        await delete_episode(base_url, api_key, tvdb_id, candidate, "keep", dry_run)
+        await actions.delete_episode(base_url, api_key, tvdb_id, candidate, "keep", dry_run)

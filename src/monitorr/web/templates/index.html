@@ -31,6 +31,25 @@
 </div>
 
 <article>
+  <header><strong>Sincronización</strong></header>
+  <p>
+    Reconcilia el estado visto de Plex (series ya empezadas, marcados a mano, visionados con
+    monitorr apagado) sin esperar a una reproducción.
+  </p>
+  {% if last_sync %}
+  <p>
+    <small>Última: {{ last_sync.at[:19] }} · {{ last_sync.matched }} series con progreso
+      de {{ last_sync.shows }} escaneadas.</small>
+  </p>
+  {% endif %}
+  <form method="post" action="/sync">
+    <button type="submit" {% if sync_running %}aria-busy="true" disabled{% endif %}>
+      {% if sync_running %}Sincronizando…{% else %}Sincronizar ahora{% endif %}
+    </button>
+  </form>
+</article>
+
+<article>
   <header><strong>Borrados recientes</strong></header>
   {% if deletions %}
   <table>

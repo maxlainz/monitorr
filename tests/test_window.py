@@ -61,44 +61,41 @@ async def _configure(always_have: list[str]) -> None:
 
 
 def _mock_sonarr() -> dict[str, respx.Route]:
-    series = respx.get("http://sonarr:8989/api/v3/series").mock(
-        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
-    )
-    episodes = respx.get("http://sonarr:8989/api/v3/episode").mock(
-        return_value=httpx.Response(200, json=EPISODES)
-    )
-    monitor = respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
-    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
-    delete = respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
-        return_value=httpx.Response(200)
-    )
     return {
-        "monitor": monitor,
-        "command": command,
-        "delete": delete,
-        "episodes": episodes,
-        "series": series,
+        "series": respx.get("http://sonarr:8989/api/v3/series").mock(
+            return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+        ),
+        "episodes": respx.get("http://sonarr:8989/api/v3/episode").mock(
+            return_value=httpx.Response(200, json=EPISODES)
+        ),
+        "monitor": respx.put(f"{SONARR}/episode/monitor").mock(
+            return_value=httpx.Response(200, json=[])
+        ),
+        "command": respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={})),
+        "delete": respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+            return_value=httpx.Response(200)
+        ),
     }
 
 
 @respx.mock
-async def test_dry_run_logs_pending_without_deleting() -> None:
-    await _configure(always_have=[])
+async def test_dry_run_previews_without_touching_sonarr() -> None:
+    await _configure(always_have=[])  # dry-run ON por defecto
     routes = _mock_sonarr()
 
     await apply_window(TVDB, season=1, episode=3)
 
-    # GET adelante: E4 monitorizado y buscado (no tiene fichero)
-    assert routes["monitor"].called
-    assert routes["command"].called
-    # KEEP=1: borraría E1 y E2, pero en dry-run no llama a delete
+    # Interruptor maestro: en dry-run no se escribe nada en Sonarr.
+    assert not routes["monitor"].called
+    assert not routes["command"].called
     assert not routes["delete"].called
+    # Pero el borrado que haría queda registrado como pendiente (KEEP=1: E1 y E2).
     pending = await store.list_deletions(dry_run=True)
     assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 2)}
 
 
 @respx.mock
-async def test_always_have_protects_pilot() -> None:
+async def test_always_have_protects_pilot_in_preview() -> None:
     await _configure(always_have=["S01E01"])
     _mock_sonarr()
 
@@ -109,13 +106,15 @@ async def test_always_have_protects_pilot() -> None:
 
 
 @respx.mock
-async def test_real_delete_calls_sonarr() -> None:
+async def test_real_mode_monitors_searches_deletes() -> None:
     await _configure(always_have=[])
     await set_dry_run(False)
     routes = _mock_sonarr()
 
     await apply_window(TVDB, season=1, episode=3)
 
-    assert routes["delete"].call_count == 2  # E1 y E2
+    assert routes["monitor"].called  # E4 monitorizado por delante
+    assert routes["command"].called  # E4 buscado (sin fichero)
+    assert routes["delete"].call_count == 2  # E1 y E2 borrados
     done = await store.list_deletions(dry_run=False)
     assert {(d.season, d.episode) for d in done} == {(1, 1), (1, 2)}

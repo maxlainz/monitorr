@@ -6,6 +6,16 @@ cuándo dar esas órdenes vive en [`behavior.md`](behavior.md).
 
 > Implementado en [`src/monitorr/sonarr/client.py`](../src/monitorr/sonarr/client.py).
 
+## Monitorización al añadir series (recomendado)
+
+Las series gestionadas por monitorr deben añadirse en Sonarr con **Monitor: "Pilot"** (o "None"),
+**nunca "All"**: monitorr decide qué se monitoriza (los N por delante) y qué se borra (los N por
+detrás); si Sonarr monitoriza "All" intentará descargar toda la serie por su cuenta y peleará con
+monitorr. Con "Pilot", Sonarr baja `S01E01` (que además es el `Always-Have` por defecto) y monitorr
+toma el relevo hacia delante. Alternativa sin tocar Sonarr a mano: el botón **"Normalizar a Pilot"**
+(ver [`behavior.md`](behavior.md)) lo deja así vía API. Dejar también **"Unmonitor deleted episodes"**
+activo (Settings → Media Management) como red de seguridad; monitorr ya desmonitoriza al borrar.
+
 ## Conexión y auth
 
 - Base: `http://<host>:8989/api/v3`. Auth por cabecera `X-Api-Key` (o `?apikey=`).

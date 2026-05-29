@@ -98,18 +98,22 @@ class EpisodeWatch(BaseModel):
     watched_at: str
 
 
-async def record_watch(tvdb_id: int, season: int, episode: int) -> None:
-    now = _now()
+async def record_watch(
+    tvdb_id: int, season: int, episode: int, watched_at: str | None = None
+) -> None:
+    timestamp = watched_at or _now()
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute(
             "INSERT INTO episode_watch (tvdb_id, season, episode, watched_at) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(tvdb_id, season, episode) DO UPDATE SET watched_at = excluded.watched_at",
-            (tvdb_id, season, episode, now),
+            (tvdb_id, season, episode, timestamp),
         )
+        # MAX para que el orden de registro no degrade la última actividad (importa en backfill).
         await db.execute(
             "INSERT INTO series_activity (tvdb_id, last_watch_at) VALUES (?, ?) "
-            "ON CONFLICT(tvdb_id) DO UPDATE SET last_watch_at = excluded.last_watch_at",
-            (tvdb_id, now),
+            "ON CONFLICT(tvdb_id) DO UPDATE SET "
+            "last_watch_at = MAX(last_watch_at, excluded.last_watch_at)",
+            (tvdb_id, timestamp),
         )
         await db.commit()
 

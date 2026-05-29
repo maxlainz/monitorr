@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     plex_poll_interval: int = 30
     grace_sweep_interval: int = 3600
+    sync_interval: int = 21600
+    sync_on_startup: bool = True
     webhook_secret: str = ""
 
     @property

@@ -4,6 +4,7 @@ Ver .claude/plex.md → "Descubrimiento del servidor", "Detección" y "Correlaci
 """
 
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -42,6 +43,18 @@ class PlexSession(BaseModel):
     @property
     def progress(self) -> float:
         return self.view_offset / self.duration if self.duration > 0 else 0.0
+
+
+class ShowRef(BaseModel):
+    rating_key: str
+    title: str
+    tvdb_id: int | None
+
+
+class WatchedEpisode(BaseModel):
+    season: int
+    episode: int
+    viewed_at: str
 
 
 def _headers(token: str, client_id: str) -> dict[str, str]:
@@ -107,6 +120,20 @@ def _metadata(data: Any) -> list[dict[str, Any]]:
     return list(items)
 
 
+def _directory(data: Any) -> list[dict[str, Any]]:
+    container = data.get("MediaContainer", {})
+    items = container.get("Directory", [])
+    return list(items)
+
+
+def _tvdb_from_guids(item: dict[str, Any]) -> int | None:
+    for guid in item.get("Guid", []):
+        match = _TVDB_GUID.search(str(guid.get("id", "")))
+        if match:
+            return int(match.group(1))
+    return None
+
+
 async def get_sessions(server_uri: str, token: str, client_id: str) -> list[PlexSession]:
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(
@@ -146,8 +173,68 @@ async def resolve_tvdb_id(
         metadata = _metadata(response.json())
         if not metadata:
             return None
-        for guid in metadata[0].get("Guid", []):
-            match = _TVDB_GUID.search(str(guid.get("id", "")))
-            if match:
-                return int(match.group(1))
-        return None
+        return _tvdb_from_guids(metadata[0])
+
+
+async def list_show_libraries(server_uri: str, token: str, client_id: str) -> list[str]:
+    """Keys de las secciones de tipo serie (`/library/sections`)."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(
+            f"{server_uri}/library/sections", headers=_headers(token, client_id)
+        )
+        response.raise_for_status()
+        return [
+            str(section["key"])
+            for section in _directory(response.json())
+            if section.get("type") == "show"
+        ]
+
+
+async def list_shows(
+    server_uri: str, token: str, client_id: str, section_key: str
+) -> list[ShowRef]:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(
+            f"{server_uri}/library/sections/{section_key}/all",
+            params={"type": "2", "includeGuids": "1"},
+            headers=_headers(token, client_id),
+        )
+        response.raise_for_status()
+        return [
+            ShowRef(
+                rating_key=str(item.get("ratingKey", "")),
+                title=str(item.get("title", "")),
+                tvdb_id=_tvdb_from_guids(item),
+            )
+            for item in _metadata(response.json())
+        ]
+
+
+async def get_watched_episodes(
+    server_uri: str, token: str, client_id: str, show_rating_key: str
+) -> list[WatchedEpisode]:
+    """Episodios con `viewCount>0` de una serie (`/library/metadata/{key}/allLeaves`)."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(
+            f"{server_uri}/library/metadata/{show_rating_key}/allLeaves",
+            headers=_headers(token, client_id),
+        )
+        response.raise_for_status()
+        watched: list[WatchedEpisode] = []
+        for item in _metadata(response.json()):
+            if int(item.get("viewCount", 0)) <= 0:
+                continue
+            last_viewed = item.get("lastViewedAt")
+            viewed_at = (
+                datetime.fromtimestamp(int(last_viewed), tz=UTC).isoformat()
+                if last_viewed
+                else datetime.now(UTC).isoformat()
+            )
+            watched.append(
+                WatchedEpisode(
+                    season=int(item.get("parentIndex", 0)),
+                    episode=int(item.get("index", 0)),
+                    viewed_at=viewed_at,
+                )
+            )
+        return watched

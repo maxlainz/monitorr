@@ -26,8 +26,11 @@ Organizados por dominio (no por capa):
   servidor y persistencia del token e identidad de cliente. Ver [`plex.md`](plex.md).
 - **Detector de visionado** — polling de `/status/sessions` (principal) con debounce, y
   webhook `media.scrobble` (opcional). Emite el evento "serie vista hasta el episodio E".
-- **Motor de ventana** — aplica GET / KEEP / Always-Have / grace / dry-run. Núcleo funcional,
-  ver [`behavior.md`](behavior.md).
+- **Sincronización/reconciliación** — escanea la biblioteca de Plex y aplica la ventana al último
+  visto de cada serie (botón, al arrancar, periódica). Cubre series ya empezadas, marcados a mano
+  y visionados offline. Ver [`behavior.md`](behavior.md).
+- **Motor de ventana** — aplica GET / KEEP / Always-Have / grace; "forzar a Pilot" (opt-in). Todas
+  las escrituras a Sonarr pasan por `engine/actions.py`, guardadas por dry-run. Ver [`behavior.md`](behavior.md).
 - **Cliente Sonarr** — monitorizar/desmonitorizar, lanzar búsquedas y borrar ficheros. Ver
   [`sonarr.md`](sonarr.md).
 - **Estado/persistencia** — tokens (cuenta + servidor), identidad de cliente, y estado por
@@ -54,10 +57,17 @@ Organizados por dominio (no por capa):
    quien tenga Plex Pass.
 4. **Trigger "visto" a ~90%**. *Por qué*: coincide con el fin real del episodio (scrobble) y
    es replicable por polling con `viewOffset/duration`.
-5. **Borrado combinado: conteo + grace + dry-run**. *Por qué*: el conteo es predecible, el
-   grace cubre inactividad, y el dry-run permite validar antes de borrar de verdad.
+5. **Borrado combinado: conteo + grace**. *Por qué*: el conteo es predecible y el grace cubre
+   inactividad.
 6. **Config global + override por serie**. *Por qué*: arranque simple, con escape para casos
    especiales sin el modelo de tags por serie de episeerr.
+7. **Dry-run = interruptor maestro (ON por defecto)**. *Por qué*: la app es destructiva; con
+   dry-run no se escribe **nada** en Sonarr (en vivo y sync), solo se previsualiza. Un único
+   switch centralizado en `engine/actions.py`.
+8. **Reconciliación además de detección en vivo**. *Por qué*: el polling/webhook solo ven
+   reproducciones; la sync recoge lo ya visto, lo marcado a mano y lo visto con monitorr apagado.
+9. **Forzar a Pilot opt-in (manual)**. *Por qué*: tocar el estado de monitorización de Sonarr es
+   sensible; se hace solo cuando el usuario lo pide.
 
 ## Decisiones pendientes
 

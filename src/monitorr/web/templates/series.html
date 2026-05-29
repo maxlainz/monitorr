@@ -9,8 +9,12 @@
 <p>Sonarr no devolvió series.</p>
 {% else %}
 <p>Desactiva monitorr para una serie concreta (override). La política global se aplica al resto.</p>
+<p>
+  <small>"Normalizar a Pilot" desmonitoriza la serie en Sonarr y deja solo el piloto; a partir
+  de ahí monitorr gestiona episodio a episodio. Respeta el modo dry-run.</small>
+</p>
 <table>
-  <thead><tr><th>Serie</th><th>TVDB</th><th>monitorr</th></tr></thead>
+  <thead><tr><th>Serie</th><th>TVDB</th><th>monitorr</th><th>Pilot</th></tr></thead>
   <tbody>
     {% for s in series %}
     <tr>
@@ -23,6 +27,11 @@
                    onchange="this.form.submit()" />
             {% if s.enabled %}activo{% else %}desactivado{% endif %}
           </label>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="/series/{{ s.tvdb_id }}/normalize">
+          <button type="submit" class="secondary outline">Normalizar a Pilot</button>
         </form>
       </td>
     </tr>
