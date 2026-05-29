@@ -7,6 +7,7 @@ además queda en `deletion_log` (dry_run=1) para la lista de pendientes de la UI
 import logging
 
 from monitorr import store
+from monitorr.engine.policy import matches_always_have
 from monitorr.sonarr import client as sonarr
 from monitorr.sonarr.client import SonarrEpisode, SonarrSeries
 
@@ -38,18 +39,37 @@ async def search_episodes(
 async def normalize_to_pilot(
     base_url: str,
     api_key: str,
+    tvdb_id: int,
     series: SonarrSeries,
     episodes: list[SonarrEpisode],
+    always_have: list[str],
     dry_run: bool,
 ) -> None:
-    """Desmonitoriza todo y deja solo el piloto (S01E01); busca el piloto si le falta fichero."""
+    """Deja monitorizado solo el piloto (S01E01). Los episodios ya descargados que se
+    desmonitorizan se **borran** (salvo Always-Have); el piloto se busca si le falta fichero."""
     pilot = next((e for e in episodes if e.season_number == 1 and e.episode_number == 1), None)
+    pilot_id = pilot.id if pilot else None
+
+    # Descargados (no piloto, no protegidos) que dejan de monitorizarse → se borran.
+    to_delete = [
+        e
+        for e in episodes
+        if e.id != pilot_id
+        and e.has_file
+        and not matches_always_have(always_have, e.season_number, e.episode_number)
+    ]
+    delete_ids = {e.id for e in to_delete}
+    to_unmonitor = [e.id for e in episodes if e.id != pilot_id and e.id not in delete_ids]
+
+    for episode in to_delete:
+        await delete_episode(base_url, api_key, tvdb_id, episode, "normalize", dry_run)
+
     if dry_run:
-        logger.info("[dry-run] normalizaría a Pilot: %s (tvdb=%s)", series.title, series.tvdb_id)
+        logger.info("[dry-run] dejaría solo el piloto monitorizado en %s", series.title)
         return
-    all_ids = [e.id for e in episodes]
-    if all_ids:
-        await sonarr.set_monitored(base_url, api_key, all_ids, False)
+
+    if to_unmonitor:
+        await sonarr.set_monitored(base_url, api_key, to_unmonitor, False)
     if pilot is not None:
         await sonarr.set_monitored(base_url, api_key, [pilot.id], True)
         if not pilot.has_file:

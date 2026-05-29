@@ -52,9 +52,10 @@ confías en el comportamiento, lo desactivas en Ajustes y todo pasa a ejecutarse
 
 ## Forzar a Pilot (opt-in)
 
-Acción **manual** por serie ("Normalizar a Pilot"): desmonitoriza todos los episodios en Sonarr y
-deja monitorizado solo el piloto (`S01E01`), buscándolo si le falta fichero. A partir de ahí la
-ventana (GET) monitoriza hacia delante episodio a episodio. Quita la necesidad de configurar
+Acción **manual** por serie ("Normalizar a Pilot"): deja monitorizado solo el piloto (`S01E01`),
+buscándolo si le falta fichero. Los episodios **ya descargados** que quedan desmonitorizados se
+**borran** (salvo Always-Have) — desmonitorizar un episodio en disco implica borrarlo. A partir de
+ahí la ventana (GET) monitoriza hacia delante episodio a episodio. Quita la necesidad de configurar
 "Monitor: Pilot" a mano en Sonarr. Nunca es automática; respeta dry-run.
 
 ## Sincronización / reconciliación

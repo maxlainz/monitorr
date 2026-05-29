@@ -13,6 +13,7 @@ from monitorr.config import get_settings
 from monitorr.engine import actions
 from monitorr.engine.policy import (
     Policy,
+    effective_policy,
     get_dry_run,
     get_global_policy,
     get_user_filter,
@@ -278,8 +279,15 @@ async def series_normalize(tvdb_id: int) -> RedirectResponse:
         series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
         if series is not None:
             episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            policy, _ = await effective_policy(tvdb_id)
             await actions.normalize_to_pilot(
-                base_url, api_key, series, episodes, await get_dry_run()
+                base_url,
+                api_key,
+                tvdb_id,
+                series,
+                episodes,
+                policy.always_have,
+                await get_dry_run(),
             )
     return RedirectResponse(url="/series", status_code=303)
 
