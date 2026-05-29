@@ -151,9 +151,7 @@ async def test_sync_continues_when_one_series_errors() -> None:
     respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
         return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
     )
-    respx.get(f"{PLEX}/library/metadata/200/allLeaves").mock(
-        return_value=httpx.Response(500)
-    )
+    respx.get(f"{PLEX}/library/metadata/200/allLeaves").mock(return_value=httpx.Response(500))
     # Ambas series gestionadas; 999 va primero para que find_series_by_tvdb devuelva la correcta.
     respx.get("http://sonarr:8989/api/v3/series").mock(
         return_value=httpx.Response(
