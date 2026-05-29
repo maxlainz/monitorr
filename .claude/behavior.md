@@ -34,12 +34,13 @@ la primera comprobación antes de cualquier borrado.
 
 Complementan a KEEP con criterio temporal (días sin actividad de la serie):
 
-- **watched**: borra episodios ya vistos pasados X días.
-- **unwatched**: borra episodios no vistos pasados X días.
-- **dormant**: borra todo lo borrable de la serie si lleva X días sin visionado.
+- **watched**: borra episodios ya vistos pasados X días. *Default: 7.*
+- **unwatched**: borra episodios no vistos pasados X días. *Default: 365.*
+- **dormant**: borra todo lo borrable de la serie si lleva X días sin visionado. *Default: sin
+  asignar (`None`) → desactivado: una serie inactiva nunca se purga en bloque.*
 
-Requiere **persistir estado** por serie/episodio (último visto, primer no visto, última
-actividad). Los grace periods también respetan Always-Have.
+Cada grace es independiente; dejar uno **sin asignar** lo desactiva. Requiere **persistir estado**
+por serie/episodio (último visto, primer no visto, última actividad). Respetan Always-Have.
 
 ## Dry-run (interruptor maestro)
 

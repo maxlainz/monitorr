@@ -19,8 +19,8 @@ class Policy(BaseModel):
     keep_count: int = 1
     keep_unit: Unit = "episodes"
     always_have: list[str] = Field(default_factory=lambda: ["S01E01"])
-    grace_watched_days: int | None = None
-    grace_unwatched_days: int | None = None
+    grace_watched_days: int | None = 7
+    grace_unwatched_days: int | None = 365
     dormant_days: int | None = None
     search_on_get: bool = True
 
