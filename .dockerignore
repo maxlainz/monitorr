@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.venv
+config
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+*.db
+*.db-wal
+*.db-shm
+tests
+CLAUDE.md

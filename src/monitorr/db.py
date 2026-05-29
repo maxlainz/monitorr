@@ -1,0 +1,28 @@
+from pathlib import Path
+
+import aiosqlite
+
+# Migraciones idempotentes ordenadas. El índice + 1 es la versión de esquema (PRAGMA
+# user_version); al arrancar se aplican solo las pendientes. Añadir nuevas al final, nunca
+# editar las ya publicadas.
+MIGRATIONS: list[str] = [
+    """
+    CREATE TABLE setting (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    """,
+]
+
+
+async def init_db(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(path) as db:
+        await db.execute("PRAGMA journal_mode=WAL;")
+        cursor = await db.execute("PRAGMA user_version;")
+        row = await cursor.fetchone()
+        current = int(row[0]) if row else 0
+        for version in range(current, len(MIGRATIONS)):
+            await db.executescript(MIGRATIONS[version])
+            await db.execute(f"PRAGMA user_version = {version + 1};")
+        await db.commit()

@@ -6,11 +6,12 @@ punto de visionado y conserva solo *N* **por detrás** (borrando el resto del di
 Sonarr), protegiendo episodios clave como el piloto. Todo **solo vía API**, sin acceso al
 disco de media. Es una alternativa enfocada a [episeerr](.claude/episeerr.md).
 
-> **Stack aún sin fijar.** El propósito y el comportamiento están definidos (ver
-> [`.claude/architecture.md`](.claude/architecture.md) y [`.claude/behavior.md`](.claude/behavior.md));
-> falta elegir lenguaje/framework. Antes de desarrollar, lee
-> [`.claude/documentation.md`](.claude/documentation.md) para saber **cómo y cuándo**
-> mantener esta documentación.
+**Stack**: Python 3.12 · FastAPI · HTMX · SQLite · Docker single-image multi-arch (Web UI en
+`:8080`). Detalle en [`.claude/tech-stack.md`](.claude/tech-stack.md). Existe un esqueleto
+runnable; la lógica de Plex/Sonarr/ventana está como contrato (firmas + TODO).
+
+> Antes de desarrollar, lee [`.claude/documentation.md`](.claude/documentation.md) para saber
+> **cómo y cuándo** mantener esta documentación.
 
 ## Reglas
 
@@ -29,6 +30,7 @@ disco de media. Es una alternativa enfocada a [episeerr](.claude/episeerr.md).
 | [`.claude/rules.md`](.claude/rules.md) | Antes de cualquier edición — git, idioma, estilo, comentarios, abstracciones |
 | [`.claude/documentation.md`](.claude/documentation.md) | Antes de tocar la documentación — cómo y cuándo actualizarla, cuándo crear un doc nuevo |
 | [`.claude/architecture.md`](.claude/architecture.md) | Stack, componentes, flujo de datos, decisiones técnicas y pendientes |
+| [`.claude/tech-stack.md`](.claude/tech-stack.md) | Versiones, layout de directorios, dependencias y decisiones del stack |
 | [`.claude/workflows.md`](.claude/workflows.md) | Comandos de desarrollo, build/test/lint, deploy, env vars, merge a `main` |
 | [`.claude/behavior.md`](.claude/behavior.md) | Lógica central: ventana de episodios (GET/KEEP), Always-Have, grace periods, dry-run, override |
 | [`.claude/plex.md`](.claude/plex.md) | Integración Plex: Login with Plex (PIN/OAuth), descubrimiento de servidor, polling/webhook, correlación TVDB |

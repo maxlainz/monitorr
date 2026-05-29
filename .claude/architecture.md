@@ -1,8 +1,8 @@
 # Arquitectura
 
-> Fase de investigación: el **stack aún no está fijado**. Este doc describe propósito,
-> componentes conceptuales, flujo y decisiones; los detalles de implementación se rellenan
-> al elegir stack. Mantener actualizado según [`documentation.md`](documentation.md).
+> Stack fijado (ver [`tech-stack.md`](tech-stack.md)). Existe un esqueleto runnable; la lógica
+> de Plex/Sonarr/ventana está como contrato (firmas + TODO). Mantener actualizado según
+> [`documentation.md`](documentation.md).
 
 ## Propósito
 
@@ -10,6 +10,13 @@ monitorr observa qué series se están viendo en Plex y, vía API de Sonarr, man
 monitorizados/descargados *N* episodios **por delante** del punto de visionado y conserva
 solo *N* **por detrás** (borrando el resto del disco a través de Sonarr), protegiendo
 episodios clave (p.ej. el piloto). Todo **solo vía API**, sin acceso al disco de media.
+
+## Stack
+
+Python 3.12 · FastAPI + Uvicorn · HTMX + Jinja2 (server-rendered) · SQLite (aiosqlite) ·
+Docker single-image multi-arch (amd64/arm64). Un único proceso ASGI sirve API + Web UI en
+`:8080` y arranca los pollers como tareas `asyncio` en el `lifespan`. Versiones, layout y el
+*porqué* de cada elección en [`tech-stack.md`](tech-stack.md).
 
 ## Componentes
 
@@ -54,8 +61,8 @@ Organizados por dominio (no por capa):
 
 ## Decisiones pendientes
 
-- Stack (lenguaje, framework, persistencia, despliegue) — `tech-stack.md` cuando se fije.
-- Mecanismo de persistencia de tokens y estado de grace.
-- Intervalo de polling y estrategia de debounce.
+- Esquema SQLite del estado (tokens, grace por serie/episodio, debounce, historial).
+- Estrategia de debounce del poller (cómo evitar re-disparos del mismo episodio).
 - Orden aired vs absolute (anime) y tratamiento de especiales `S00`.
 - Soporte multiusuario (riesgo de borrar lo que otro no ha visto) — fuera de v1.
+- Login propio de la Web UI (v1 asume LAN de confianza / reverse proxy).

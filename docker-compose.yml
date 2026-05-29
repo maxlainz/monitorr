@@ -1,0 +1,15 @@
+services:
+  monitorr:
+    image: monitorr:latest
+    # build: .          # descomenta para construir la imagen localmente
+    container_name: monitorr
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+    environment:
+      - TZ=Europe/Madrid
+      # - MONITORR_LOG_LEVEL=INFO
+      # - MONITORR_PLEX_POLL_INTERVAL=30
+      # - MONITORR_WEBHOOK_SECRET=cambia-esto
+    restart: unless-stopped

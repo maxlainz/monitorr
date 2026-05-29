@@ -43,14 +43,24 @@ documentación, ver [`documentation.md`](documentation.md).
 - Sin feature flags ni shims de retrocompatibilidad mientras no haya usuarios externos.
   Cambiar el código directamente.
 
-## TODO: Lenguaje y tipado
+## Lenguaje y tipado
 
-> Rellenar al fijar el stack. Debe cubrir: versión mínima del lenguaje y dónde se pinea,
-> política de type hints / tipado estricto, linter + formatter elegidos y dónde está su
-> config, librería de validación de I/O en fronteras.
+- **Python 3.12**, pineado en [`pyproject.toml`](../pyproject.toml) (`requires-python`) y en
+  [`.python-version`](../.python-version). Deps con `uv` y lockfile `uv.lock`.
+- **Type hints obligatorios**; mypy en **modo estricto** (config en `pyproject.toml`). El código
+  debe pasar `mypy .` sin errores.
+- **Linter + formatter: Ruff** (config en `pyproject.toml`). Formato de Ruff es la fuente de
+  verdad; no introducir otro formatter.
+- **Validación de I/O en fronteras: Pydantic v2** (y `pydantic-settings` para env vars). Validar
+  payloads externos (Plex, Sonarr, forms) al entrar, no por dentro.
+- Stack completo y *porqué*: [`tech-stack.md`](tech-stack.md).
 
-## TODO: CI
+## CI
 
-> Rellenar al montar CI. Debe cubrir: los steps que corren (lint, format check, type check,
-> tests, smoke end-to-end), el comando único para correrlos en local antes de pushear, y la
-> gestión del lockfile de dependencias. Enlazar a `.github/workflows/ci.yml` cuando exista.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) corre en push a `dev`/`main` y en PRs:
+
+- **quality**: `ruff check`, `ruff format --check`, `mypy`, `pytest` (instala con `uv sync --frozen`).
+- **image**: construye la imagen multi-arch (`linux/amd64,linux/arm64`) con buildx (sin push).
+
+Comando único en local antes de pushear (ver [`workflows.md`](workflows.md)):
+`uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.

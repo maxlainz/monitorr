@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}monitorr — Ajustes{% endblock %}
+{% block content %}
+<h1>Ajustes</h1>
+
+<article>
+  <header><strong>Plex</strong></header>
+  <p>Vinculación por <em>Login with Plex</em>.</p>
+  <button disabled>Vincular con Plex (pendiente)</button>
+</article>
+
+<article>
+  <header><strong>Sonarr</strong></header>
+  <form>
+    <label>
+      URL de Sonarr
+      <input type="url" name="sonarr_url" placeholder="http://sonarr:8989" disabled />
+    </label>
+    <label>
+      API Key
+      <input type="password" name="sonarr_api_key" disabled />
+    </label>
+    <button type="submit" disabled>Guardar (pendiente)</button>
+  </form>
+</article>
+{% endblock %}
