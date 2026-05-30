@@ -33,6 +33,12 @@ Modules **by domain**, not by layer (see [`rules.md`](rules.md)). Structure in
 - **Single-image, single process**: Uvicorn serves API + Web UI on `:8080` and the pollers run
   as `asyncio` tasks in the `lifespan`. No supervisord or multiprocess → simple image and
   operation. State in the `/config` volume.
+- **Root entrypoint + `gosu` drop to `PUID`/`PGID`** ([`docker-entrypoint.sh`](../docker-entrypoint.sh)):
+  the image ships `gosu` and starts as root so the entrypoint can remap the `app` user, `chown`
+  `/config` and drop privileges before running. A purely non-root image can't write a bind-mounted
+  `/config` owned by the host (caused `unable to open database file`); this `*arr`/LinuxServer-style
+  pattern makes bind mounts work out of the box and lets users match their host UID. Defaults
+  `1000:1000`; honored only when started as root (a compose `user:` override is respected as-is).
 - **Server-rendered Web UI (HTMX + Jinja2), no frontend build**: `htmx.min.js` and `pico.min.css`
   are **vendored** in `web/static/`. Avoids a Node toolchain and keeps the image small;
   fits a config panel + dashboard.

@@ -30,12 +30,20 @@ ENV PATH="/app/.venv/bin:$PATH" \
     MONITORR_BUILD_SHA="${VCS_REF}" \
     MONITORR_BUILD_DATE="${BUILD_DATE}"
 WORKDIR /app
-RUN groupadd -r app && useradd -r -g app app \
+# gosu lets the entrypoint drop from root to the PUID/PGID user so a bind-mounted /config is
+# writable regardless of its host ownership.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r app && useradd -r -g app app \
     && mkdir -p /config && chown app:app /config
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
-USER app
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+# Start as root: the entrypoint remaps the app user, fixes /config ownership and drops privileges.
 EXPOSE 8080
 VOLUME /config
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["monitorr"]

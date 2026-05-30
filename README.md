@@ -62,6 +62,8 @@ services:
       - ./config:/config
     environment:
       - TZ=Europe/Madrid
+      # - PUID=1000   # host user/group that should own ./config (see Permissions below)
+      # - PGID=1000
     restart: unless-stopped
 ```
 
@@ -95,6 +97,10 @@ Images available on **GHCR** (`ghcr.io/maxlainz/monitorr`) and **Docker Hub**
    grace periods and unit (episode/season).
 5. Once everything is ready, **disable dry-run** so monitorr starts acting.
 
+> **Optional (Plex Pass):** for lower-latency detection, copy the **webhook URL** shown under
+> *Settings → Plex webhook* into Plex (*Settings → Webhooks → Add Webhook*). It's complementary
+> to the always-on session poller; you don't need it.
+
 ## Configuration
 
 The app configuration (Sonarr, window parameters, grace, dry-run, overrides) lives in
@@ -109,18 +115,35 @@ SQLite and is edited **from the Web UI**. Environment variables only cover infra
 | `MONITORR_GRACE_SWEEP_INTERVAL` | Seconds between grace-period sweeps | `3600` |
 | `MONITORR_SYNC_INTERVAL` | Seconds between syncs (`0` disables it) | `21600` |
 | `MONITORR_SYNC_ON_STARTUP` | Sync once on startup if it never ran | `true` |
-| `MONITORR_WEBHOOK_SECRET` | Token to protect the Plex webhook | (empty) |
+| `MONITORR_WEBHOOK_SECRET` | Override for the Plex webhook secret (auto-generated if empty) | (empty) |
 | `TZ` | Time zone (affects grace periods) | `UTC` |
 
 Template in [`.env.example`](.env.example).
+
+### Permissions (PUID/PGID)
+
+monitorr stores its state in the bind-mounted `/config`. The container starts as root, then drops
+to a normal user before running the app and fixes ownership of `/config` so it stays writable.
+Two **container-only** variables control that user (they are read by the entrypoint, not by the
+app):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `PUID` | User id the process runs as (and owner of `/config`) | `1000` |
+| `PGID` | Group id the process runs as | `1000` |
+
+The defaults (`1000:1000`) match the typical desktop/NAS user, so most setups need nothing. If your
+host user differs, set `PUID`/`PGID` to its `id -u` / `id -g` so files in `./config` stay owned by
+you. (If you override the container user yourself, e.g. compose `user:`, the entrypoint skips the
+remap and just runs as that user.)
 
 ## ⚠️ Security
 
 monitorr **does not include its own authentication** in v1: it assumes it runs on a **trusted
 LAN**. **Do not expose it directly to the internet.** If you need remote access, put it behind
 a **reverse proxy with authentication** (Authelia, Authentik, basic-auth, etc.). The only
-endpoint meant to be exposed, the optional Plex webhook, is protected with
-`MONITORR_WEBHOOK_SECRET`.
+endpoint meant to be exposed, the optional Plex webhook, is protected with an auto-generated
+secret embedded in its URL (overridable with `MONITORR_WEBHOOK_SECRET`).
 
 ## Development
 

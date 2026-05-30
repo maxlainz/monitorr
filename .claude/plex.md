@@ -62,12 +62,22 @@ no manual configuration**.
 ## `media.scrobble` webhook (optional, lower latency)
 
 Optional improvement for users with **Plex Pass**. It's not automated with the login: the user
-must add the webhook URL in Plex (Settings → Webhooks).
+copies the webhook URL into Plex (Settings → Webhooks). The endpoint is `POST
+/webhook/plex/{secret}` ([`web/routes.py`](../src/monitorr/web/routes.py) `plex_webhook`).
 
+- **Secret**: auto-generated (`secrets.token_urlsafe`) and stored in SQLite
+  (`constants.WEBHOOK_SECRET`); `get_or_create_webhook_secret()` in
+  [`webhook.py`](../src/monitorr/plex/webhook.py) creates it on first access. The Settings UI
+  shows the full ready-to-copy URL (with a Regenerate button). `MONITORR_WEBHOOK_SECRET` is an
+  optional override to pin the same secret across instances; while set, Regenerate is disabled.
+  The endpoint compares with `secrets.compare_digest`.
 - "Watched" event = `media.scrobble` (triggers on completion, ~90%; threshold not configurable).
 - `multipart` payload with JSON; an episode's `Metadata` includes: `type:"episode"`,
   `grandparentTitle`, `parentIndex` (season), `index` (episode), `ratingKey`,
   `grandparentRatingKey`, `guid` and a `Guid` array with external IDs (`tvdb://`/`tmdb://`/`imdb://`).
+  The top-level `Account.title` is the Plex user, used to apply the same `user_filter` as the
+  poller (a scrobble from a filtered-out user returns `{"status": "filtered"}`).
+- Reuses `process_watch()` (record + apply window), the same path as the poller.
 - Don't use it together with [Tautulli](tautulli.md) as a source: it would cause double processing.
 
 ## Correlation with Sonarr (to TVDB)

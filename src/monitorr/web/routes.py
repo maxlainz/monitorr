@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,11 @@ from monitorr.plex.client import (
     resolve_tvdb_id,
 )
 from monitorr.plex.poller import process_watch
-from monitorr.plex.webhook import parse_scrobble
+from monitorr.plex.webhook import (
+    get_or_create_webhook_secret,
+    parse_scrobble,
+    regenerate_webhook_secret,
+)
 from monitorr.sonarr import client as sonarr
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,10 @@ _bg_tasks: set[asyncio.Task[dict[str, int]]] = set()
 
 def _forward_url(request: Request) -> str:
     return str(request.base_url).rstrip("/") + "/settings"
+
+
+def _webhook_url(request: Request, secret: str) -> str:
+    return str(request.base_url).rstrip("/") + f"/webhook/plex/{secret}"
 
 
 async def _plex_status() -> dict[str, Any]:
@@ -85,6 +94,7 @@ async def index(request: Request) -> HTMLResponse:
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> HTMLResponse:
     sonarr_url = await store.get_setting(constants.SONARR_URL)
+    secret = await get_or_create_webhook_secret()
     context = {
         "plex": await _plex_status(),
         "sonarr_url": sonarr_url or "",
@@ -93,6 +103,8 @@ async def settings_page(request: Request) -> HTMLResponse:
         "dry_run": await get_dry_run(),
         "watched_threshold": await get_watched_threshold(),
         "user_filter": ", ".join(await get_user_filter()),
+        "webhook_url": _webhook_url(request, secret),
+        "webhook_pinned_by_env": bool(get_settings().webhook_secret),
     }
     return templates.TemplateResponse(request, "settings.html", context)
 
@@ -286,10 +298,18 @@ async def trigger_sync() -> RedirectResponse:
 # --- optional webhook ---
 
 
+@router.post("/webhook/regenerate")
+async def webhook_regenerate() -> RedirectResponse:
+    # Pinned by env var → nothing to rotate from the UI.
+    if not get_settings().webhook_secret:
+        await regenerate_webhook_secret()
+    return RedirectResponse(url="/settings", status_code=303)
+
+
 @router.post("/webhook/plex/{secret}")
 async def plex_webhook(secret: str, request: Request) -> dict[str, str]:
-    expected = get_settings().webhook_secret
-    if not expected or secret != expected:
+    expected = await get_or_create_webhook_secret()
+    if not secrets.compare_digest(secret, expected):
         return {"status": "forbidden"}
 
     form = await request.form()
@@ -303,6 +323,10 @@ async def plex_webhook(secret: str, request: Request) -> dict[str, str]:
     event = parse_scrobble(payload)
     if event is None:
         return {"status": "ignored"}
+
+    user_filter = await get_user_filter()
+    if user_filter and event.user not in user_filter:
+        return {"status": "filtered"}
 
     server = await store.get_setting(constants.PLEX_SERVER_URI)
     token = await store.get_setting(constants.PLEX_SERVER_TOKEN)

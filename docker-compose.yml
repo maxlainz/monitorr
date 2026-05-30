@@ -11,6 +11,9 @@ services:
       - ./config:/config
     environment:
       - TZ=Europe/Madrid
+      # Match the host user that should own ./config (run `id -u` / `id -g`). Defaults to 1000:1000.
+      # - PUID=1000
+      # - PGID=1000
       # - MONITORR_LOG_LEVEL=INFO
       # - MONITORR_PLEX_POLL_INTERVAL=30
       # - MONITORR_WEBHOOK_SECRET=change-me

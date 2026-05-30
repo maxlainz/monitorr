@@ -4,6 +4,26 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.1.0] - 2026-05-30
+
+### Added
+
+- **Plex webhook is now configurable from the UI**: *Settings → Plex webhook* shows a
+  ready-to-copy URL with an auto-generated secret (plus Copy and Regenerate). No env var or
+  manual URL crafting needed; `MONITORR_WEBHOOK_SECRET` becomes an optional override.
+
+### Changed
+
+- The webhook now honors the same Plex `user_filter` as the session poller, so both detection
+  paths behave identically.
+
+### Fixed
+
+- **Startup crash on bind-mounted `/config`** (`sqlite3.OperationalError: unable to open database
+  file`): the image ran as a fixed non-root user that couldn't write a host-owned bind mount. It
+  now starts as root and an entrypoint remaps the user to `PUID`/`PGID` (default `1000:1000`),
+  fixes `/config` ownership and drops privileges via `gosu` before running.
+
 ## [1.0.1] - 2026-05-30
 
 ### Changed
@@ -40,5 +60,6 @@ First public release. monitorr watches viewing in Plex and manages episodes in S
 - **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
   automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
+[1.1.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.1.0
 [1.0.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.1
 [1.0.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.0
