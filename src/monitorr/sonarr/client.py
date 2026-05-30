@@ -1,4 +1,4 @@
-"""Cliente Sonarr (API v3/v4). Ver .claude/sonarr.md para endpoints y gotchas."""
+"""Sonarr client (API v3/v4). See .claude/sonarr.md for endpoints and gotchas."""
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,7 +56,7 @@ def _client(base_url: str, api_key: str) -> httpx.AsyncClient:
 
 
 async def system_status(base_url: str, api_key: str) -> str | None:
-    """Versión de Sonarr si la conexión funciona, si no None (para el botón 'probar')."""
+    """Sonarr version if the connection works, else None (for the 'test' button)."""
     try:
         async with _client(base_url, api_key) as client:
             response = await client.get("/system/status")
@@ -107,9 +107,9 @@ async def set_monitored(
 async def set_seasons_monitored(
     base_url: str, api_key: str, series_id: int, desired: dict[int, bool]
 ) -> None:
-    """Fija `seasons[].monitored` del objeto serie (GET-modify-PUT, que es como Sonarr exige
-    editar temporadas). Idempotente: solo reescribe si algún flag cambia. `desired` mapea
-    `seasonNumber → monitored`; las temporadas no listadas no se tocan."""
+    """Sets `seasons[].monitored` of the series object (GET-modify-PUT, which is how Sonarr
+    requires editing seasons). Idempotent: only rewrites if some flag changes. `desired` maps
+    `seasonNumber → monitored`; seasons not listed are not touched."""
     if not desired:
         return
     async with _client(base_url, api_key) as client:
@@ -167,8 +167,8 @@ async def delete_queue_item(
     remove_from_client: bool = False,
     blocklist: bool = False,
 ) -> None:
-    """Quita un ítem de la cola. Con remove_from_client=False el torrent sigue en el cliente
-    (sembrando hasta su ratio); Sonarr deja de seguirlo y no lo importa."""
+    """Removes an item from the queue. With remove_from_client=False the torrent stays in the client
+    (seeding until its ratio); Sonarr stops tracking it and doesn't import it."""
     async with _client(base_url, api_key) as client:
         response = await client.delete(
             f"/queue/{queue_id}",

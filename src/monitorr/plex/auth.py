@@ -1,4 +1,4 @@
-"""Login with Plex (flujo PIN/OAuth). Ver .claude/plex.md → "Vinculación"."""
+"""Login with Plex (PIN/OAuth flow). See .claude/plex.md → "Linking"."""
 
 import uuid
 from urllib.parse import urlencode
@@ -36,7 +36,7 @@ async def create_pin(client_id: str) -> tuple[int, str]:
 
 
 def build_auth_url(client_id: str, code: str, forward_url: str) -> str:
-    """URL de app.plex.tv/auth a la que se envía al usuario para autorizar."""
+    """app.plex.tv/auth URL the user is sent to in order to authorize."""
     query = urlencode(
         {
             "clientID": client_id,
@@ -49,7 +49,7 @@ def build_auth_url(client_id: str, code: str, forward_url: str) -> str:
 
 
 async def poll_pin(pin_id: int, code: str, client_id: str) -> str | None:
-    """GET plex.tv/api/v2/pins/{id} → authToken cuando el usuario autoriza, si no None."""
+    """GET plex.tv/api/v2/pins/{id} → authToken when the user authorizes, else None."""
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(
             f"{_PINS_URL}/{pin_id}", params={"code": code}, headers=_headers(client_id)

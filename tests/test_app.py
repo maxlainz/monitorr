@@ -46,7 +46,7 @@ def test_save_policy_clamps_negative_counts() -> None:
         )
         assert response.status_code == 303
         page = client.get("/settings")
-        # La política guardada no admite negativos (clamp a 0); no hay un 500 de validación.
+        # The saved policy doesn't allow negatives (clamp to 0); there's no validation 500.
         assert page.status_code == 200
         assert 'name="get_count" min="0" value="0"' in page.text
         assert 'name="keep_count" min="0" value="0"' in page.text

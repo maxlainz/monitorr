@@ -1,7 +1,7 @@
 [project]
 name = "monitorr"
-version = "1.0.0"
-description = "Monitoriza el visionado en Plex y gestiona episodios en Sonarr (monitorizar/conservar/borrar) solo vía API."
+version = "1.0.1"
+description = "Watches viewing in Plex and manages episodes in Sonarr (monitor/keep/delete) API-only."
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
@@ -53,7 +53,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
 
 [tool.ruff.lint.flake8-bugbear]
-# FastAPI usa llamadas (Form/Query/Path) como valores por defecto a propósito.
+# FastAPI uses calls (Form/Query/Path) as default values on purpose.
 extend-immutable-calls = ["fastapi.Form", "fastapi.Query", "fastapi.Path"]
 
 [tool.mypy]

@@ -1,6 +1,6 @@
-"""Webhook opcional `media.scrobble` (Plex Pass). Ver .claude/plex.md → "Webhook".
+"""Optional `media.scrobble` webhook (Plex Pass). See .claude/plex.md → "Webhook".
 
-Solo se procesa el evento media.scrobble; el payload llega como multipart con un campo JSON.
+Only the media.scrobble event is processed; the payload arrives as multipart with a JSON field.
 """
 
 from typing import Any
@@ -15,7 +15,7 @@ class ScrobbleEvent(BaseModel):
 
 
 def parse_scrobble(payload: dict[str, Any]) -> ScrobbleEvent | None:
-    """Devuelve el evento si es media.scrobble de un episodio, si no None."""
+    """Returns the event if it's a media.scrobble of an episode, else None."""
     if payload.get("event") != "media.scrobble":
         return None
     metadata = payload.get("Metadata", {})

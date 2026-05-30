@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}monitorr — Ajustes{% endblock %}
+{% block title %}monitorr — Settings{% endblock %}
 {% block content %}
-<h1>Ajustes</h1>
+<h1>Settings</h1>
 
 <article>
   <header><strong>Plex</strong></header>
   {% if plex.linked %}
-    <p>✅ Vinculado a <strong>{{ plex.name }}</strong>.</p>
+    <p>✅ Linked to <strong>{{ plex.name }}</strong>.</p>
     <form method="post" action="/plex/unlink">
-      <button type="submit" class="secondary">Desvincular</button>
+      <button type="submit" class="secondary">Unlink</button>
     </form>
   {% else %}
-    <p>Vincula tu cuenta con <em>Login with Plex</em> (no requiere token manual).</p>
-    <button hx-post="/plex/link" hx-target="#plex-link" hx-swap="outerHTML">Vincular con Plex</button>
+    <p>Link your account with <em>Login with Plex</em> (no manual token required).</p>
+    <button hx-post="/plex/link" hx-target="#plex-link" hx-swap="outerHTML">Link with Plex</button>
     <div id="plex-link"></div>
   {% endif %}
 </article>
@@ -20,17 +20,17 @@
 <article>
   <header><strong>Sonarr</strong></header>
   <form method="post" action="/settings/sonarr">
-    <label>URL de Sonarr
+    <label>Sonarr URL
       <input type="url" name="sonarr_url" value="{{ sonarr_url }}" placeholder="http://sonarr:8989" required />
     </label>
     <label>API Key
-      <input type="password" name="sonarr_api_key" placeholder="{% if sonarr_configured %}(sin cambios){% endif %}" required />
+      <input type="password" name="sonarr_api_key" placeholder="{% if sonarr_configured %}(unchanged){% endif %}" required />
     </label>
     <div class="grid">
-      <button type="submit">Guardar</button>
+      <button type="submit">Save</button>
       <button type="button" class="secondary"
               hx-post="/settings/sonarr/test" hx-include="closest form" hx-target="#sonarr-test">
-        Probar conexión
+        Test connection
       </button>
     </div>
   </form>
@@ -38,67 +38,67 @@
 </article>
 
 <article>
-  <header><strong>Política global</strong></header>
+  <header><strong>Global policy</strong></header>
   <form method="post" action="/settings/policy">
     <div class="grid">
-      <label>GET (por delante)
+      <label>GET (ahead)
         <input type="number" name="get_count" min="0" value="{{ policy.get_count }}" />
       </label>
-      <label>Unidad GET
+      <label>GET unit
         <select name="get_unit">
-          <option value="episodes" {% if policy.get_unit == "episodes" %}selected{% endif %}>episodios</option>
-          <option value="seasons" {% if policy.get_unit == "seasons" %}selected{% endif %}>temporadas</option>
+          <option value="episodes" {% if policy.get_unit == "episodes" %}selected{% endif %}>episodes</option>
+          <option value="seasons" {% if policy.get_unit == "seasons" %}selected{% endif %}>seasons</option>
         </select>
       </label>
-      <label>KEEP (por detrás)
+      <label>KEEP (behind)
         <input type="number" name="keep_count" min="0" value="{{ policy.keep_count }}" />
       </label>
-      <label>Unidad KEEP
+      <label>KEEP unit
         <select name="keep_unit">
-          <option value="episodes" {% if policy.keep_unit == "episodes" %}selected{% endif %}>episodios</option>
-          <option value="seasons" {% if policy.keep_unit == "seasons" %}selected{% endif %}>temporadas</option>
+          <option value="episodes" {% if policy.keep_unit == "episodes" %}selected{% endif %}>episodes</option>
+          <option value="seasons" {% if policy.keep_unit == "seasons" %}selected{% endif %}>seasons</option>
         </select>
       </label>
     </div>
 
-    <label>Always-Have (proteger; ej. <code>S01E01 S*E01</code>)
+    <label>Always-Have (protect; e.g. <code>S01E01 S*E01</code>)
       <input type="text" name="always_have" value="{{ policy.always_have|join(' ') }}" />
     </label>
 
     <div class="grid">
-      <label>Grace watched (días)
+      <label>Grace watched (days)
         <input type="number" name="grace_watched_days" min="0" value="{{ policy.grace_watched_days if policy.grace_watched_days is not none else '' }}" />
       </label>
-      <label>Grace unwatched (días)
+      <label>Grace unwatched (days)
         <input type="number" name="grace_unwatched_days" min="0" value="{{ policy.grace_unwatched_days if policy.grace_unwatched_days is not none else '' }}" />
       </label>
-      <label>Dormant (días)
+      <label>Dormant (days)
         <input type="number" name="dormant_days" min="0" value="{{ policy.dormant_days if policy.dormant_days is not none else '' }}" />
       </label>
     </div>
 
-    <label>Umbral de "visto" (0–1)
+    <label>"Watched" threshold (0–1)
       <input type="number" name="watched_threshold" step="0.05" min="0" max="1" value="{{ watched_threshold }}" />
     </label>
 
-    <label>Filtro de usuarios Plex (vacío = todos; separa por comas)
+    <label>Plex user filter (empty = all; comma-separated)
       <input type="text" name="user_filter" value="{{ user_filter }}" />
     </label>
 
     <label>
       <input type="checkbox" name="search_on_get" {% if policy.search_on_get %}checked{% endif %} />
-      Buscar en Sonarr al monitorizar por delante
+      Search in Sonarr when monitoring ahead
     </label>
     <label>
       <input type="checkbox" name="auto_normalize" {% if policy.auto_normalize %}checked{% endif %} />
-      Auto-normalizar a piloto las series sin visionado (set-and-forget)
+      Auto-normalize shows without viewing to pilot (set-and-forget)
     </label>
     <label>
       <input type="checkbox" name="dry_run" {% if dry_run %}checked{% endif %} />
-      Modo dry-run (simula borrados, no borra)
+      Dry-run mode (simulates deletions, doesn't delete)
     </label>
 
-    <button type="submit">Guardar política</button>
+    <button type="submit">Save policy</button>
   </form>
 </article>
 {% endblock %}

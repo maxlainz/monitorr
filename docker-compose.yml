@@ -1,9 +1,9 @@
 services:
   monitorr:
     image: ghcr.io/maxlainz/monitorr:latest
-    # Alternativas:
+    # Alternatives:
     #   image: maxlainz/monitorr:latest   # Docker Hub
-    #   build: .                          # construir la imagen localmente
+    #   build: .                          # build the image locally
     container_name: monitorr
     ports:
       - "8080:8080"
@@ -13,5 +13,5 @@ services:
       - TZ=Europe/Madrid
       # - MONITORR_LOG_LEVEL=INFO
       # - MONITORR_PLEX_POLL_INTERVAL=30
-      # - MONITORR_WEBHOOK_SECRET=cambia-esto
+      # - MONITORR_WEBHOOK_SECRET=change-me
     restart: unless-stopped

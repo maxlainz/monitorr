@@ -1,4 +1,4 @@
-"""Acceso a SQLite. Helpers async; cada llamada abre su propia conexión (WAL, carga baja)."""
+"""SQLite access. Async helpers; each call opens its own connection (WAL, low load)."""
 
 from datetime import UTC, datetime
 
@@ -42,7 +42,7 @@ async def delete_setting(key: str) -> None:
         await db.commit()
 
 
-# --- overrides por serie ---
+# --- per-series overrides ---
 
 
 class Override(BaseModel):
@@ -89,7 +89,7 @@ async def delete_override(tvdb_id: int) -> None:
         await db.commit()
 
 
-# --- visionado / actividad ---
+# --- viewing / activity ---
 
 
 class EpisodeWatch(BaseModel):
@@ -108,7 +108,7 @@ async def record_watch(
             "ON CONFLICT(tvdb_id, season, episode) DO UPDATE SET watched_at = excluded.watched_at",
             (tvdb_id, season, episode, timestamp),
         )
-        # MAX para que el orden de registro no degrade la última actividad (importa en backfill).
+        # MAX so the insertion order doesn't degrade the last activity (matters in backfill).
         await db.execute(
             "INSERT INTO series_activity (tvdb_id, last_watch_at) VALUES (?, ?) "
             "ON CONFLICT(tvdb_id) DO UPDATE SET "
@@ -146,7 +146,7 @@ async def list_activity() -> list[tuple[int, str]]:
         return [(int(r[0]), str(r[1])) for r in rows]
 
 
-# --- log de borrados ---
+# --- deletion log ---
 
 
 class Deletion(BaseModel):
@@ -168,8 +168,8 @@ async def record_deletion(
     reason: str,
     dry_run: bool,
 ) -> None:
-    """Registra un borrado. Los previews (dry_run=True) se deduplican a una fila por episodio;
-    un borrado real (dry_run=False) se añade al historial y retira el preview ya cumplido."""
+    """Records a deletion. Previews (dry_run=True) are deduplicated to one row per episode;
+    a real deletion (dry_run=False) is appended to the history and removes the fulfilled preview."""
     async with aiosqlite.connect(_db_path()) as db:
         if dry_run:
             await db.execute(
@@ -197,7 +197,7 @@ async def record_deletion(
 
 
 async def clear_pending_deletions() -> None:
-    """Vacía los previews pendientes (dry_run=1); el historial de borrados reales se conserva."""
+    """Empties the pending previews (dry_run=1); the history of real deletions is kept."""
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute("DELETE FROM deletion_log WHERE dry_run = 1")
         await db.commit()

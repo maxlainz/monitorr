@@ -1,6 +1,6 @@
-"""Barrido de grace periods (watched / unwatched / dormant). Ver .claude/behavior.md.
+"""Grace-period sweep (watched / unwatched / dormant). See .claude/behavior.md.
 
-Tarea periódica que borra por inactividad temporal, respetando Always-Have y dry-run.
+Periodic task that deletes by temporal inactivity, respecting Always-Have and dry-run.
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _age_days(iso_timestamp: str) -> float:
     moment = datetime.fromisoformat(iso_timestamp)
-    if moment.tzinfo is None:  # timestamps heredados sin zona → se asumen UTC
+    if moment.tzinfo is None:  # legacy timestamps without a zone → assumed UTC
         moment = moment.replace(tzinfo=UTC)
     return (datetime.now(UTC) - moment).total_seconds() / 86400
 
@@ -49,7 +49,7 @@ async def _sweep_series(
     watches = {(w.season, w.episode): w.watched_at for w in await store.get_watches(tvdb_id)}
     activity_age = _age_days(last_activity)
 
-    # dormant: serie inactiva demasiado tiempo → borrar todo lo borrable.
+    # dormant: show inactive too long → delete everything deletable.
     if policy.dormant_days is not None and activity_age > policy.dormant_days:
         for episode in episodes:
             if matches_always_have(
@@ -59,7 +59,7 @@ async def _sweep_series(
             await delete_episode(base_url, api_key, tvdb_id, episode, "dormant", dry_run)
         return
 
-    # watched: vistos hace más de X días, conservando el más reciente como marcador.
+    # watched: watched more than X days ago, keeping the most recent one as a marker.
     if policy.grace_watched_days is not None:
         watched: list[tuple[SonarrEpisode, str]] = []
         for episode in episodes:
@@ -77,7 +77,7 @@ async def _sweep_series(
                     continue
                 await delete_episode(base_url, api_key, tvdb_id, episode, "grace_watched", dry_run)
 
-    # unwatched: nunca vistos y serie inactiva > X días, conservando el primero como marcador.
+    # unwatched: never watched and show inactive > X days, keeping the first one as a marker.
     if policy.grace_unwatched_days is not None and activity_age > policy.grace_unwatched_days:
         unwatched = sorted(
             (e for e in episodes if (e.season_number, e.episode_number) not in watches),
@@ -101,4 +101,4 @@ async def sweep() -> None:
         try:
             await _sweep_series(base_url, api_key, tvdb_id, last_activity, dry_run)
         except Exception:
-            logger.exception("error en grace sweep de tvdb=%s", tvdb_id)
+            logger.exception("error in grace sweep for tvdb=%s", tvdb_id)

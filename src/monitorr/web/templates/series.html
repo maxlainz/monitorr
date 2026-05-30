@@ -4,13 +4,13 @@
 <h1>Series</h1>
 
 {% if not configured %}
-<p>Configura Sonarr en <a href="/settings">Ajustes</a> para ver tus series.</p>
+<p>Configure Sonarr in <a href="/settings">Settings</a> to see your shows.</p>
 {% elif not series %}
-<p>Sonarr no devolvió series.</p>
+<p>Sonarr returned no shows.</p>
 {% else %}
-<p>Desactiva monitorr para una serie concreta (override). La política global se aplica al resto.</p>
+<p>Disable monitorr for a specific show (override). The global policy applies to the rest.</p>
 <table>
-  <thead><tr><th>Serie</th><th>TVDB</th><th>monitorr</th></tr></thead>
+  <thead><tr><th>Show</th><th>TVDB</th><th>monitorr</th></tr></thead>
   <tbody>
     {% for s in series %}
     <tr>
@@ -21,7 +21,7 @@
           <label>
             <input type="checkbox" name="enabled" {% if s.enabled %}checked{% endif %}
                    onchange="this.form.submit()" />
-            {% if s.enabled %}activo{% else %}desactivado{% endif %}
+            {% if s.enabled %}active{% else %}disabled{% endif %}
           </label>
         </form>
       </td>

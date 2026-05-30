@@ -1,6 +1,6 @@
-"""Cliente Plex: descubrimiento de servidor, sesiones y correlación a TVDB.
+"""Plex client: server discovery, sessions and correlation to TVDB.
 
-Ver .claude/plex.md → "Descubrimiento del servidor", "Detección" y "Correlación".
+See .claude/plex.md → "Server discovery", "Detection" and "Correlation".
 """
 
 import re
@@ -105,7 +105,7 @@ async def discover_servers(account_token: str, client_id: str) -> list[PlexServe
 
 
 def choose_connection(connections: list[PlexConnection]) -> str | None:
-    """Preferir local directa, luego remota directa, luego relay."""
+    """Prefer direct local, then direct remote, then relay."""
     local = [c for c in connections if c.local and not c.relay]
     direct = [c for c in connections if not c.relay]
     for candidates in (local, direct, connections):
@@ -177,7 +177,7 @@ async def resolve_tvdb_id(
 
 
 async def list_show_libraries(server_uri: str, token: str, client_id: str) -> list[str]:
-    """Keys de las secciones de tipo serie (`/library/sections`)."""
+    """Keys of the show-type sections (`/library/sections`)."""
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(
             f"{server_uri}/library/sections", headers=_headers(token, client_id)
@@ -213,7 +213,7 @@ async def list_shows(
 async def get_watched_episodes(
     server_uri: str, token: str, client_id: str, show_rating_key: str
 ) -> list[WatchedEpisode]:
-    """Episodios con `viewCount>0` de una serie (`/library/metadata/{key}/allLeaves`)."""
+    """Episodes with `viewCount>0` of a show (`/library/metadata/{key}/allLeaves`)."""
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.get(
             f"{server_uri}/library/metadata/{show_rating_key}/allLeaves",

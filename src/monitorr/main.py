@@ -27,7 +27,7 @@ async def _grace_loop(interval: int) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("error en el barrido de grace periods")
+            logger.exception("error in the grace-period sweep")
 
 
 async def _sync_loop(interval: int) -> None:
@@ -38,14 +38,14 @@ async def _sync_loop(interval: int) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("error en la sincronización periódica")
+            logger.exception("error in the periodic sync")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     await init_db(settings.db_path)
-    logger.info("monitorr iniciado (db=%s)", settings.db_path)
+    logger.info("monitorr started (db=%s)", settings.db_path)
 
     tasks: list[asyncio.Task[Any]] = [
         asyncio.create_task(poll_loop(settings.plex_poll_interval)),

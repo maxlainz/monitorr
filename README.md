@@ -4,46 +4,46 @@
 [![CI](https://github.com/maxlainz/monitorr/actions/workflows/ci.yml/badge.svg)](https://github.com/maxlainz/monitorr/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-monitorr observa qué series estás viendo en **Plex** y, vía la API de **Sonarr**, mantiene
-monitorizados/descargados *N* episodios **por delante** de tu punto de visionado y conserva solo
-*N* **por detrás** (borrando el resto del disco a través de Sonarr), protegiendo episodios clave
-como el piloto. Todo **solo vía API**: nunca toca el disco de media.
+monitorr watches which shows you're viewing in **Plex** and, via the **Sonarr** API, keeps
+*N* episodes **ahead** of your viewing point monitored/downloaded and keeps only *N*
+**behind** (deleting the rest from disk through Sonarr), protecting key episodes such as the
+pilot. Everything **API-only**: it never touches the media disk.
 
-Es una alternativa enfocada a [episeerr](.claude/episeerr.md): en vez de gestionar episodios a
-mano, monitorr aplica una **ventana deslizante** alrededor de lo que realmente estás viendo.
+Instead of managing episodes by hand, monitorr applies a **sliding window** around what you're
+actually watching.
 
-## Características
+## Features
 
-- **Ventana por delante (GET)** — mantiene monitorizados *N* episodios por delante del último
-  visto; opcionalmente lanza la búsqueda en Sonarr para descargarlos.
-- **Ventana por detrás (KEEP)** — conserva solo *N* episodios por detrás y **borra el resto vía
-  Sonarr**, liberando disco automáticamente.
-- **Always-Have** — protege episodios clave con patrones (`S01E01`, `S*E01`, `S01`, `S*`): nunca
-  se borran aunque queden fuera de la ventana.
-- **Grace periods** — el borrado es diferido, no inmediato tras ver un episodio; barridos
-  periódicos aplican los borrados cuando vence el plazo.
-- **Unidad configurable** — la ventana se mide por **episodios** o por **temporadas**.
-- **Dry-run por defecto** — interruptor maestro **activado de fábrica**: monitorr no toca nada
-  en Sonarr hasta que lo desactivas explícitamente. Pruébalo sin miedo.
-- **Detección en vivo + reconciliación** — sondeo de sesiones de Plex (con webhook opcional
-  `media.scrobble`) y una sincronización periódica que reconcilia el estado visto.
-- **Login with Plex** — vinculación por PIN/OAuth y descubrimiento automático del servidor.
-- **Config global + overrides por serie**, editable desde la Web UI.
-- **Imagen única multi-arch** (amd64/arm64), SQLite, sin servicios externos.
+- **Window ahead (GET)** — keeps *N* episodes ahead of the last watched one monitored;
+  optionally triggers the Sonarr search to download them.
+- **Window behind (KEEP)** — keeps only *N* episodes behind and **deletes the rest via
+  Sonarr**, freeing up disk automatically.
+- **Always-Have** — protects key episodes with patterns (`S01E01`, `S*E01`, `S01`, `S*`): they
+  are never deleted even if they fall outside the window.
+- **Grace periods** — deletion is deferred, not immediate after watching an episode; periodic
+  sweeps apply the deletions when the deadline expires.
+- **Configurable unit** — the window is measured in **episodes** or in **seasons**.
+- **Dry-run by default** — master switch **enabled out of the box**: monitorr doesn't touch
+  anything in Sonarr until you explicitly disable it. Try it without fear.
+- **Live detection + reconciliation** — Plex session polling (with optional `media.scrobble`
+  webhook) and a periodic sync that reconciles the watched state.
+- **Login with Plex** — PIN/OAuth linking and automatic server discovery.
+- **Global config + per-series overrides**, editable from the Web UI.
+- **Single multi-arch image** (amd64/arm64), SQLite, no external services.
 
-## Cómo funciona
+## How it works
 
 ```
-Plex (poll de sesiones / webhook)  ──►  correlación por TVDB  ──►  Sonarr (API)
-   detecta visionado (~90% visto)        serie Plex ↔ Sonarr        monitor / búsqueda / borrado
+Plex (session poll / webhook)  ──►  TVDB correlation  ──►  Sonarr (API)
+   detects viewing (~90% watched)    Plex show ↔ Sonarr     monitor / search / delete
 ```
 
-Cuando terminas (o casi) un episodio, monitorr recalcula la ventana de esa serie: monitoriza y
-busca lo que falta por delante, y marca para borrado lo que sobra por detrás (respetando
-Always-Have y los grace periods). Una sincronización periódica reconcilia todo por si se perdió
-algún evento.
+When you finish (or nearly finish) an episode, monitorr recomputes that show's window: it
+monitors and searches for what's missing ahead, and marks for deletion what's surplus behind
+(respecting Always-Have and the grace periods). A periodic sync reconciles everything in case
+an event was missed.
 
-> _(Captura de la Web UI pendiente.)_
+> _(Web UI screenshot pending.)_
 
 ## Quick start
 
@@ -61,61 +61,62 @@ docker run -d \
 
 ### docker compose
 
-Usa el [`docker-compose.yml`](docker-compose.yml) de ejemplo:
+Use the example [`docker-compose.yml`](docker-compose.yml):
 
 ```bash
 docker compose up -d
 ```
 
-Imágenes disponibles en **GHCR** (`ghcr.io/maxlainz/monitorr`) y **Docker Hub**
-(`maxlainz/monitorr`), con tags `:1`, `:1.0`, `:1.0.0` y `:latest` para amd64 y arm64.
+Images available on **GHCR** (`ghcr.io/maxlainz/monitorr`) and **Docker Hub**
+(`maxlainz/monitorr`), with tags `:1`, `:1.0`, `:1.0.0` and `:latest` for amd64 and arm64.
 
-### Primeros pasos
+### First steps
 
-1. Abre la Web UI en `http://localhost:8080`.
-2. **Vincula Plex** (Login with Plex) y elige tu servidor.
-3. Configura **Sonarr**: URL y API key (botón de test incluido).
-4. Ajusta la **política**: episodios por delante (GET), por detrás (KEEP), patrones Always-Have,
-   grace periods y unidad (episodio/temporada).
-5. Con todo a punto, **desactiva el dry-run** para que monitorr empiece a actuar.
+1. Open the Web UI at `http://localhost:8080`.
+2. **Link Plex** (Login with Plex) and choose your server.
+3. Configure **Sonarr**: URL and API key (test button included).
+4. Adjust the **policy**: episodes ahead (GET), behind (KEEP), Always-Have patterns,
+   grace periods and unit (episode/season).
+5. Once everything is ready, **disable dry-run** so monitorr starts acting.
 
-## Configuración
+## Configuration
 
-La configuración de la app (Sonarr, parámetros de ventana, grace, dry-run, overrides) vive en
-SQLite y se edita **desde la Web UI**. Las variables de entorno solo cubren infraestructura:
+The app configuration (Sonarr, window parameters, grace, dry-run, overrides) lives in
+SQLite and is edited **from the Web UI**. Environment variables only cover infrastructure:
 
-| Variable | Propósito | Default |
+| Variable | Purpose | Default |
 |---|---|---|
-| `MONITORR_CONFIG_DIR` | Directorio de datos (SQLite, identidad de cliente Plex) | `/config` |
-| `MONITORR_PORT` | Puerto de escucha | `8080` |
-| `MONITORR_LOG_LEVEL` | Nivel de log (`DEBUG`/`INFO`/`WARNING`/`ERROR`) | `INFO` |
-| `MONITORR_PLEX_POLL_INTERVAL` | Segundos entre sondeos de sesiones de Plex | `30` |
-| `MONITORR_GRACE_SWEEP_INTERVAL` | Segundos entre barridos de grace periods | `3600` |
-| `MONITORR_SYNC_INTERVAL` | Segundos entre sincronizaciones (`0` la desactiva) | `21600` |
-| `MONITORR_SYNC_ON_STARTUP` | Sincronizar una vez al arrancar si nunca se hizo | `true` |
-| `MONITORR_WEBHOOK_SECRET` | Token para proteger el webhook de Plex | (vacío) |
-| `TZ` | Zona horaria (afecta a los grace periods) | `UTC` |
+| `MONITORR_CONFIG_DIR` | Data directory (SQLite, Plex client identity) | `/config` |
+| `MONITORR_PORT` | Listening port | `8080` |
+| `MONITORR_LOG_LEVEL` | Log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`) | `INFO` |
+| `MONITORR_PLEX_POLL_INTERVAL` | Seconds between Plex session polls | `30` |
+| `MONITORR_GRACE_SWEEP_INTERVAL` | Seconds between grace-period sweeps | `3600` |
+| `MONITORR_SYNC_INTERVAL` | Seconds between syncs (`0` disables it) | `21600` |
+| `MONITORR_SYNC_ON_STARTUP` | Sync once on startup if it never ran | `true` |
+| `MONITORR_WEBHOOK_SECRET` | Token to protect the Plex webhook | (empty) |
+| `TZ` | Time zone (affects grace periods) | `UTC` |
 
-Plantilla en [`.env.example`](.env.example).
+Template in [`.env.example`](.env.example).
 
-## ⚠️ Seguridad
+## ⚠️ Security
 
-monitorr **no incluye autenticación propia** en v1: asume que corre en una **LAN de confianza**.
-**No lo expongas directamente a internet.** Si necesitas acceso remoto, ponlo detrás de un
-**reverse proxy con autenticación** (Authelia, Authentik, basic-auth, etc.). El único endpoint
-pensado para exponerse, el webhook opcional de Plex, se protege con `MONITORR_WEBHOOK_SECRET`.
+monitorr **does not include its own authentication** in v1: it assumes it runs on a **trusted
+LAN**. **Do not expose it directly to the internet.** If you need remote access, put it behind
+a **reverse proxy with authentication** (Authelia, Authentik, basic-auth, etc.). The only
+endpoint meant to be exposed, the optional Plex webhook, is protected with
+`MONITORR_WEBHOOK_SECRET`.
 
-## Desarrollo
+## Development
 
 ```bash
 uv sync
-uv run monitorr            # Web UI en http://localhost:8080
+uv run monitorr            # Web UI at http://localhost:8080
 ```
 
-Comandos de build/test/lint, despliegue y proceso de release:
-[`.claude/workflows.md`](.claude/workflows.md). Arquitectura y decisiones técnicas en
+Build/test/lint commands, deployment and the release process:
+[`.claude/workflows.md`](.claude/workflows.md). Architecture and technical decisions in
 [`.claude/`](.claude/).
 
-## Licencia
+## License
 
 [GPL-3.0-or-later](LICENSE).

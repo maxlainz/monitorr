@@ -1,1 +1,1 @@
-"""Integración Sonarr (control saliente). Contrato aquí; ver ../../../.claude/sonarr.md."""
+"""Sonarr integration (outbound control). Contract here; see ../../../.claude/sonarr.md."""

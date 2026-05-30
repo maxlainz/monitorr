@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}monitorr — Borrados{% endblock %}
+{% block title %}monitorr — Deletions{% endblock %}
 {% block content %}
-<h1>Borrados</h1>
+<h1>Deletions</h1>
 
 <article>
-  <header><strong>Pendientes (dry-run)</strong> — {{ pending|length }}</header>
+  <header><strong>Pending (dry-run)</strong> — {{ pending|length }}</header>
   {% if pending %}
   <table>
-    <thead><tr><th>TVDB</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th></tr></thead>
+    <thead><tr><th>TVDB</th><th>Episode</th><th>Reason</th><th>When</th></tr></thead>
     <tbody>
       {% for d in pending %}
       <tr>
@@ -20,15 +20,15 @@
     </tbody>
   </table>
   {% else %}
-  <p>Nada pendiente.</p>
+  <p>Nothing pending.</p>
   {% endif %}
 </article>
 
 <article>
-  <header><strong>Borrados reales</strong></header>
+  <header><strong>Actual deletions</strong></header>
   {% if done %}
   <table>
-    <thead><tr><th>TVDB</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th></tr></thead>
+    <thead><tr><th>TVDB</th><th>Episode</th><th>Reason</th><th>When</th></tr></thead>
     <tbody>
       {% for d in done %}
       <tr>
@@ -41,7 +41,7 @@
     </tbody>
   </table>
   {% else %}
-  <p>Sin borrados reales todavía.</p>
+  <p>No actual deletions yet.</p>
   {% endif %}
 </article>
 {% endblock %}

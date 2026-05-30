@@ -1,6 +1,6 @@
-"""Lógica de ventana: GET (N por delante) / KEEP (N por detrás) / Always-Have.
+"""Window logic: GET (N ahead) / KEEP (N behind) / Always-Have.
 
-Ver .claude/behavior.md. Se dispara al detectar "serie vista hasta el episodio E".
+See .claude/behavior.md. Triggered when detecting "show watched up to episode E".
 """
 
 import logging
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def _desired_seasons(series: SonarrSeries, anchor_season: int, policy: Policy) -> dict[int, bool]:
-    """Monitorizado a nivel temporada que impone monitorr: por episodios, todas off (control
-    100% por episodio); por temporadas, solo las de la ventana GET on."""
+    """Season-level monitoring enforced by monitorr: by episodes, all off (100%
+    per-episode control); by seasons, only those of the GET window on."""
     if policy.get_unit == "seasons":
         return {
             s.season_number: anchor_season <= s.season_number <= anchor_season + policy.get_count
@@ -25,7 +25,7 @@ def _desired_seasons(series: SonarrSeries, anchor_season: int, policy: Policy) -
 
 
 def _real_episodes(episodes: list[SonarrEpisode]) -> list[SonarrEpisode]:
-    """Episodios "reales" (excluye especiales S00) en orden de emisión."""
+    """ "Real" episodes (excludes S00 specials) in airing order."""
     real = [e for e in episodes if e.season_number >= 1]
     return sorted(real, key=lambda e: (e.season_number, e.episode_number))
 
@@ -50,18 +50,18 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         return
     cfg = await sonarr.get_config()
     if cfg is None:
-        logger.warning("Sonarr no configurado; se omite la ventana")
+        logger.warning("Sonarr not configured; skipping the window")
         return
     base_url, api_key = cfg
     dry_run = await get_dry_run()
 
     series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
     if series is None:
-        logger.warning("serie tvdb=%s no está en Sonarr", tvdb_id)
+        logger.warning("show tvdb=%s is not in Sonarr", tvdb_id)
         return
 
-    # Imponer el monitorizado de temporada antes de tocar episodios (orden a prueba de cascada):
-    # si Sonarr propagara el cambio a los episodios, el GET de abajo los re-monitoriza.
+    # Enforce season monitoring before touching episodes (cascade-proof order):
+    # if Sonarr propagated the change to the episodes, the GET below re-monitors them.
     await actions.set_seasons_monitored(
         base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
     )
@@ -76,10 +76,10 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         None,
     )
     if idx is None:
-        logger.warning("S%02dE%02d no encontrado en Sonarr (tvdb=%s)", season, episode, tvdb_id)
+        logger.warning("S%02dE%02d not found in Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
 
-    # GET: monitorizar (y buscar) por delante.
+    # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)
     if ahead:
         await actions.monitor_episodes(base_url, api_key, [e.id for e in ahead], dry_run)
@@ -88,8 +88,8 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
                 base_url, api_key, [e.id for e in ahead if not e.has_file], dry_run
             )
 
-    # Recorte por delante: lo que excede la ventana GET se borra si está en disco (simétrico a
-    # KEEP) o se desmonitoriza si aún no se ha descargado, salvo Always-Have.
+    # Trim ahead: anything beyond the GET window is deleted if on disk (symmetric to
+    # KEEP) or unmonitored if not yet downloaded, except Always-Have.
     ahead_ids = {e.id for e in ahead}
     to_unmonitor: list[int] = []
     for candidate in real[idx + 1 :]:
@@ -105,7 +105,7 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
             to_unmonitor.append(candidate.id)
     await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)
 
-    # KEEP: borrar por detrás lo que cae fuera de la ventana, salvo Always-Have.
+    # KEEP: delete behind whatever falls outside the window, except Always-Have.
     for i in range(idx):
         candidate = real[i]
         if not candidate.has_file:
