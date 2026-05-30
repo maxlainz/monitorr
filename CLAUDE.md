@@ -7,8 +7,8 @@ Sonarr), protegiendo episodios clave como el piloto. Todo **solo vía API**, sin
 disco de media. Es una alternativa enfocada a [episeerr](.claude/episeerr.md).
 
 **Stack**: Python 3.12 · FastAPI · HTMX · SQLite · Docker single-image multi-arch (Web UI en
-`:8080`). Detalle en [`.claude/tech-stack.md`](.claude/tech-stack.md). Existe un esqueleto
-runnable; la lógica de Plex/Sonarr/ventana está como contrato (firmas + TODO).
+`:8080`). Detalle en [`.claude/tech-stack.md`](.claude/tech-stack.md). La lógica de
+Plex/Sonarr/ventana está implementada y testeada; v1.0.0 publicada en Docker Hub y GHCR.
 
 > Antes de desarrollar, lee [`.claude/documentation.md`](.claude/documentation.md) para saber
 > **cómo y cuándo** mantener esta documentación.

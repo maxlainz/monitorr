@@ -1,7 +1,7 @@
 # Workflows
 
-> Esqueleto. Rellenar los comandos cuando exista stack. Mantener actualizado según
-> [`documentation.md`](documentation.md): cualquier comando nuevo se documenta aquí.
+> Mantener actualizado según [`documentation.md`](documentation.md): cualquier comando nuevo
+> se documenta aquí.
 
 ## Ramas y trabajo diario
 
@@ -55,6 +55,8 @@ docker build -t monitorr .                                          # build loca
 docker buildx build --platform linux/amd64,linux/arm64 -t monitorr . # multi-arch
 ```
 
+La publicación de imágenes es automática por tag (ver [Publicación y release](#publicación-y-release)).
+
 ## Deploy
 
 Imagen única en Docker. Ejemplo en [`docker-compose.yml`](../docker-compose.yml): mapea
@@ -93,3 +95,31 @@ git merge dev --no-ff
 git push
 git checkout dev
 ```
+
+## Publicación y release
+
+La imagen se publica **automáticamente al pushear un tag semver `vX.Y.Z`** mediante
+[`.github/workflows/release.yml`](../.github/workflows/release.yml):
+
+- Build multi-arch (`linux/amd64,linux/arm64`) y push a **Docker Hub** (`maxlainz/monitorr`) y
+  **GHCR** (`ghcr.io/maxlainz/monitorr`) con tags `:X.Y.Z`, `:X.Y`, `:X` y `:latest`.
+- Inyecta `VERSION`/`VCS_REF`/`BUILD_DATE` como build-args (labels OCI + endpoint `/version`).
+- **Guard de versión**: el workflow falla si el tag no coincide con `version` de `pyproject.toml`.
+- Crea el **GitHub Release** con las notas de la sección correspondiente de
+  [`CHANGELOG.md`](../CHANGELOG.md).
+
+Pasos para una release:
+
+```bash
+# 1) en dev: subir la versión y el changelog
+#    - pyproject.toml  → version = "X.Y.Z"
+#    - CHANGELOG.md     → nueva sección [X.Y.Z]
+git commit -am "chore: release vX.Y.Z" && git push
+# 2) merge a main (ver arriba)
+# 3) tag desde main → dispara la publicación
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+**Secrets requeridos** (GitHub → Settings → Secrets and variables → Actions): `DOCKERHUB_USERNAME`
+y `DOCKERHUB_TOKEN` (Access Token de Docker Hub). GHCR usa el `GITHUB_TOKEN` automático. Tras el
+primer push a GHCR, marca el package como **público** y enlázalo al repo.

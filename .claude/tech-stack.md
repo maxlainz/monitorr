@@ -28,9 +28,6 @@ Módulos **por dominio**, no por capa (ver [`rules.md`](rules.md)). Estructura e
 - `src/monitorr/engine/` — `window.py` y `grace.py`. Ver [`behavior.md`](behavior.md).
 - `src/monitorr/web/` — `routes.py`, `templates/` (Jinja2), `static/` (htmx + pico vendorados).
 
-> Los paquetes `plex/`, `sonarr/`, `engine/` están como **contrato (firmas + TODO)**; la lógica
-> se implementa en fases siguientes.
-
 ## Decisiones y porqué
 
 - **Single-image, un solo proceso**: Uvicorn sirve API + Web UI en `:8080` y los pollers corren
@@ -47,6 +44,8 @@ Módulos **por dominio**, no por capa (ver [`rules.md`](rules.md)). Estructura e
   dependencia, para mantener todo async-native.
 - **Multi-arch (amd64 + arm64)**: público típico de apps *arr corre en NAS/Raspberry Pi. Todas
   las deps traen wheels precompilados (incl. `pydantic-core`), así que arm64 no compila nada.
+  Se publica en **Docker Hub** (`maxlainz/monitorr`) y **GHCR** (`ghcr.io/maxlainz/monitorr`) por
+  tag `vX.Y.Z` (ver [`workflows.md`](workflows.md)).
 - **Config en SQLite + Web UI**: lo ajustable (Sonarr, ventana, grace, dry-run, overrides) se
   edita por la UI; las env vars solo cubren infraestructura. Plex se vincula por Login with Plex.
 
