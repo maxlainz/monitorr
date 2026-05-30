@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import respx
 
@@ -64,6 +66,32 @@ async def test_normalize_keeps_always_have_file() -> None:
     )
 
     assert not delete.called
+
+
+@respx.mock
+async def test_normalize_unmonitors_all_seasons() -> None:
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": True},
+            {"seasonNumber": 2, "monitored": True},
+        ],
+    }
+    series = SonarrSeries.model_validate(series_obj)
+    respx.get(f"{SONARR}/series/1").mock(return_value=httpx.Response(200, json=series_obj))
+    put = respx.put(f"{SONARR}/series/1").mock(return_value=httpx.Response(200, json=series_obj))
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+
+    await actions.normalize_to_pilot("http://sonarr:8989", "key", TVDB, series, EPISODES, [], False)
+
+    body = json.loads(put.calls[0].request.content)
+    assert {s["seasonNumber"]: s["monitored"] for s in body["seasons"]} == {1: False, 2: False}
 
 
 @respx.mock

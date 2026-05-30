@@ -37,7 +37,10 @@ El episodio que viene de Plex se localiza filtrando por `seasonNumber` + `episod
   `{ "episodeIds": [..], "monitored": true|false }`.
 - Temporada completa: `PUT /api/v3/series/{id}` editando `seasons[].monitored`. Requiere
   enviar el **objeto serie completo** → hacer antes `GET /api/v3/series/{id}`, modificar y
-  reenviar.
+  reenviar. monitorr **impone** este flag en cada ventana/normalize (ver
+  [`behavior.md`](behavior.md) "Monitorizado a nivel temporada"): los episodios nuevos heredan
+  el `monitored` de su temporada, así que dejar una temporada monitorizada haría que Sonarr los
+  auto-descargue. Implementado en `set_seasons_monitored` (idempotente, GET-modify-PUT).
 
 ## Buscar / descargar
 

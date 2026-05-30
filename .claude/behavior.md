@@ -104,6 +104,13 @@ del motor.
   (se borra si está en disco, se desmonitoriza si no).
 - **KEEP por temporadas (N)**: conserva los episodios con `season ≥ E.season − (N−1)`; borra
   los de temporadas más antiguas.
+- **Monitorizado a nivel temporada**: monitorr es autoridad también sobre el flag `monitored`
+  de cada **temporada** (no solo de episodio), porque los episodios nuevos que Sonarr descubre
+  **heredan el flag de su temporada** y se auto-monitorizarían. Por **episodios** deja **todas**
+  las temporadas off (control 100 % por episodio); por **temporadas** deja on solo las de la
+  ventana GET. Se aplica en ventana y normalize (temporadas antes que episodios, a prueba de
+  cascada), vía `GET`-modify-`PUT /series/{id}` solo si cambia, y respeta dry-run. Neutraliza
+  overrides de temporada hechos a mano en Sonarr.
 
 ## Edge cases (resueltos en el MVP)
 

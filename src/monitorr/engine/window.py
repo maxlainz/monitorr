@@ -8,9 +8,20 @@ import logging
 from monitorr.engine import actions
 from monitorr.engine.policy import Policy, effective_policy, get_dry_run, matches_always_have
 from monitorr.sonarr import client as sonarr
-from monitorr.sonarr.client import SonarrEpisode
+from monitorr.sonarr.client import SonarrEpisode, SonarrSeries
 
 logger = logging.getLogger(__name__)
+
+
+def _desired_seasons(series: SonarrSeries, anchor_season: int, policy: Policy) -> dict[int, bool]:
+    """Monitorizado a nivel temporada que impone monitorr: por episodios, todas off (control
+    100% por episodio); por temporadas, solo las de la ventana GET on."""
+    if policy.get_unit == "seasons":
+        return {
+            s.season_number: anchor_season <= s.season_number <= anchor_season + policy.get_count
+            for s in series.seasons
+        }
+    return {s.season_number: False for s in series.seasons}
 
 
 def _real_episodes(episodes: list[SonarrEpisode]) -> list[SonarrEpisode]:
@@ -42,11 +53,19 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         logger.warning("Sonarr no configurado; se omite la ventana")
         return
     base_url, api_key = cfg
+    dry_run = await get_dry_run()
 
     series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
     if series is None:
         logger.warning("serie tvdb=%s no está en Sonarr", tvdb_id)
         return
+
+    # Imponer el monitorizado de temporada antes de tocar episodios (orden a prueba de cascada):
+    # si Sonarr propagara el cambio a los episodios, el GET de abajo los re-monitoriza.
+    await actions.set_seasons_monitored(
+        base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
+    )
+
     real = _real_episodes(await sonarr.get_episodes(base_url, api_key, series.id))
     idx = next(
         (
@@ -59,8 +78,6 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
     if idx is None:
         logger.warning("S%02dE%02d no encontrado en Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
-
-    dry_run = await get_dry_run()
 
     # GET: monitorizar (y buscar) por delante.
     ahead = _select_ahead(real, idx, policy)

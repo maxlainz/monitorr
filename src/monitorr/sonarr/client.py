@@ -8,6 +8,13 @@ from monitorr import constants, store
 _TIMEOUT = 30.0
 
 
+class SonarrSeason(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    season_number: int = Field(alias="seasonNumber")
+    monitored: bool = False
+
+
 class SonarrSeries(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -15,6 +22,7 @@ class SonarrSeries(BaseModel):
     title: str
     tvdb_id: int = Field(alias="tvdbId")
     series_type: str = Field(alias="seriesType", default="standard")
+    seasons: list[SonarrSeason] = Field(default_factory=list)
 
 
 class SonarrEpisode(BaseModel):
@@ -94,6 +102,30 @@ async def set_monitored(
             json={"episodeIds": episode_ids, "monitored": monitored},
         )
         response.raise_for_status()
+
+
+async def set_seasons_monitored(
+    base_url: str, api_key: str, series_id: int, desired: dict[int, bool]
+) -> None:
+    """Fija `seasons[].monitored` del objeto serie (GET-modify-PUT, que es como Sonarr exige
+    editar temporadas). Idempotente: solo reescribe si algún flag cambia. `desired` mapea
+    `seasonNumber → monitored`; las temporadas no listadas no se tocan."""
+    if not desired:
+        return
+    async with _client(base_url, api_key) as client:
+        response = await client.get(f"/series/{series_id}")
+        response.raise_for_status()
+        data = response.json()
+        changed = False
+        for season in data.get("seasons", []):
+            number = season.get("seasonNumber")
+            if number in desired and season.get("monitored") != desired[number]:
+                season["monitored"] = desired[number]
+                changed = True
+        if not changed:
+            return
+        put = await client.put(f"/series/{series_id}", json=data)
+        put.raise_for_status()
 
 
 async def search_episodes(base_url: str, api_key: str, episode_ids: list[int]) -> None:

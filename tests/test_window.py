@@ -187,3 +187,86 @@ async def test_forward_trim_respects_always_have() -> None:
     pending = await store.list_deletions(dry_run=True)
     assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 4)}
     assert not routes["delete"].called
+
+
+def _mock_sonarr_seasons(series_obj: dict[str, object]) -> respx.Route:
+    """Mocks para que apply_window pueda fijar temporadas: GET /series?tvdb, GET+PUT /series/1,
+    episodios y escrituras. Devuelve la ruta PUT /series/1 para inspeccionar el body."""
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[series_obj])
+    )
+    respx.get(f"{SONARR}/series/1").mock(return_value=httpx.Response(200, json=series_obj))
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=EPISODES)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    return respx.put(f"{SONARR}/series/1").mock(return_value=httpx.Response(200, json=series_obj))
+
+
+@respx.mock
+async def test_window_unmonitors_all_seasons_in_episode_mode() -> None:
+    await _configure(always_have=[])  # GET=1 por episodios
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": True},
+            {"seasonNumber": 2, "monitored": True},
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    assert put.called
+    body = json.loads(put.calls[0].request.content)
+    assert {s["seasonNumber"]: s["monitored"] for s in body["seasons"]} == {1: False, 2: False}
+
+
+@respx.mock
+async def test_window_seasons_mode_monitors_only_window_seasons() -> None:
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=1, get_unit="seasons", keep_count=1, always_have=[]))
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": False},
+            {"seasonNumber": 2, "monitored": False},
+            {"seasonNumber": 3, "monitored": True},
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    # Ancla temporada 1, GET=1 temporada → on las temporadas 1 y 2; off la 3.
+    await apply_window(TVDB, season=1, episode=3)
+
+    body = json.loads(put.calls[0].request.content)
+    monitored = {s["seasonNumber"]: s["monitored"] for s in body["seasons"]}
+    assert monitored == {1: True, 2: True, 3: False}
+
+
+@respx.mock
+async def test_window_skips_series_put_when_seasons_already_correct() -> None:
+    await _configure(always_have=[])  # GET=1 por episodios → todas off
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [{"seasonNumber": 1, "monitored": False}],  # ya está como debe
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    assert not put.called  # idempotente: nada que cambiar, no reescribe la serie

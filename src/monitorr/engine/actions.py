@@ -25,6 +25,21 @@ async def monitor_episodes(
     await sonarr.set_monitored(base_url, api_key, episode_ids, True)
 
 
+async def set_seasons_monitored(
+    base_url: str, api_key: str, series_id: int, desired: dict[int, bool], dry_run: bool
+) -> None:
+    """Impone el monitorizado a nivel temporada para que monitorr sea autoridad también ahí
+    (los episodios nuevos heredan el flag de su temporada). Guardado por dry-run."""
+    if not desired:
+        return
+    if dry_run:
+        on = sorted(n for n, m in desired.items() if m)
+        off = sorted(n for n, m in desired.items() if not m)
+        logger.info("[dry-run] fijaría temporadas monitorizadas on=%s off=%s", on, off)
+        return
+    await sonarr.set_seasons_monitored(base_url, api_key, series_id, desired)
+
+
 async def unmonitor_episodes(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:
@@ -81,6 +96,11 @@ async def normalize_to_pilot(
 ) -> None:
     """Deja monitorizado solo el piloto (S01E01). Los episodios ya descargados que se
     desmonitorizan se **borran** (salvo Always-Have); el piloto se busca si le falta fichero."""
+    # Temporadas a off primero (orden a prueba de cascada): así Sonarr no re-monitoriza por
+    # temporada los episodios que va descubriendo; el piloto se re-monitoriza al final.
+    await set_seasons_monitored(
+        base_url, api_key, series.id, {s.season_number: False for s in series.seasons}, dry_run
+    )
     pilot = next((e for e in episodes if e.season_number == 1 and e.episode_number == 1), None)
     pilot_id = pilot.id if pilot else None
 
