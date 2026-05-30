@@ -25,6 +25,19 @@ async def monitor_episodes(
     await sonarr.set_monitored(base_url, api_key, episode_ids, True)
 
 
+async def unmonitor_episodes(
+    base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
+) -> None:
+    """Desmonitoriza episodios sin fichero que caen fuera de la ventana GET (no hay nada que
+    borrar, solo evitar que Sonarr los descargue). Guardado por dry-run."""
+    if not episode_ids:
+        return
+    if dry_run:
+        logger.info("[dry-run] desmonitorizaría %d episodios", len(episode_ids))
+        return
+    await sonarr.set_monitored(base_url, api_key, episode_ids, False)
+
+
 async def search_episodes(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:

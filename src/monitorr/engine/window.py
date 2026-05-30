@@ -71,6 +71,23 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
                 base_url, api_key, [e.id for e in ahead if not e.has_file], dry_run
             )
 
+    # Recorte por delante: lo que excede la ventana GET se borra si está en disco (simétrico a
+    # KEEP) o se desmonitoriza si aún no se ha descargado, salvo Always-Have.
+    ahead_ids = {e.id for e in ahead}
+    to_unmonitor: list[int] = []
+    for candidate in real[idx + 1 :]:
+        if candidate.id in ahead_ids:
+            continue
+        if matches_always_have(
+            policy.always_have, candidate.season_number, candidate.episode_number
+        ):
+            continue
+        if candidate.has_file:
+            await actions.delete_episode(base_url, api_key, tvdb_id, candidate, "ahead", dry_run)
+        elif candidate.monitored:
+            to_unmonitor.append(candidate.id)
+    await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)
+
     # KEEP: borrar por detrás lo que cae fuera de la ventana, salvo Always-Have.
     for i in range(idx):
         candidate = real[i]

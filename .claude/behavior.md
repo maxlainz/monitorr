@@ -21,11 +21,14 @@ que avanzar de episodio dispara, pero re-sondear el mismo no).
 
 Dos parámetros, configurables en **episodios o temporadas**:
 
-- **GET (N por delante)**: monitorizar y buscar los N episodios siguientes a E en orden de
-  emisión. Implica `episode/monitor` + `EpisodeSearch` en Sonarr.
+- **GET (N por delante)**: mantener **exactamente** los N episodios siguientes a E en orden de
+  emisión. Los monitoriza y busca (`episode/monitor` + `EpisodeSearch`) y **recorta lo que
+  sobra por delante**: lo que excede la ventana se **borra** (`episodefile` delete) si está en
+  disco o se **desmonitoriza** si aún no se ha descargado (reason `ahead`), salvo *Always-Have*.
+  Es una ventana deslizante: al avanzar de episodio el borde se vuelve a monitorizar/buscar.
 - **KEEP (N por detrás)**: conservar en disco los N episodios anteriores a E (incluido E). El
   resto, más antiguo que la ventana KEEP, se **borra** (`episodefile` delete) y se
-  **desmonitoriza**, salvo que esté protegido por *Always-Have*.
+  **desmonitoriza** (reason `keep`), salvo que esté protegido por *Always-Have*.
 
 ## Always-Have (protección)
 
@@ -89,8 +92,9 @@ botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el d
 
 ## Unidad temporadas (semántica)
 
-- **GET por temporadas (N)**: monitoriza los episodios tras E con `season ≤ E.season + N`
-  (resto de la temporada actual + las N siguientes).
+- **GET por temporadas (N)**: mantiene los episodios tras E con `season ≤ E.season + N`
+  (resto de la temporada actual + las N siguientes); lo de temporadas más adelante se recorta
+  (se borra si está en disco, se desmonitoriza si no).
 - **KEEP por temporadas (N)**: conserva los episodios con `season ≥ E.season − (N−1)`; borra
   los de temporadas más antiguas.
 
