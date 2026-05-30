@@ -4,6 +4,19 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Plex webhook is now configurable from the UI**: *Settings → Plex webhook* shows a
+  ready-to-copy URL with an auto-generated secret (plus Copy and Regenerate). No env var or
+  manual URL crafting needed; `MONITORR_WEBHOOK_SECRET` becomes an optional override.
+
+### Changed
+
+- The webhook now honors the same Plex `user_filter` as the session poller, so both detection
+  paths behave identically.
+
 ## [1.0.1] - 2026-05-30
 
 ### Changed

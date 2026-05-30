@@ -18,6 +18,36 @@
 </article>
 
 <article>
+  <header><strong>Plex webhook</strong> <small>(optional)</small></header>
+  <p>
+    Lower-latency detection for <strong>Plex Pass</strong> users. It complements the always-on
+    session poller — you don't need it, but it triggers the moment Plex marks an episode watched.
+  </p>
+  <label>Webhook URL
+    <input type="text" id="webhook-url" value="{{ webhook_url }}" readonly />
+  </label>
+  <div class="grid">
+    <button type="button" class="secondary"
+            onclick="navigator.clipboard.writeText(document.getElementById('webhook-url').value);this.textContent='Copied!'">
+      Copy URL
+    </button>
+    {% if webhook_pinned_by_env %}
+      <small>🔒 Pinned by <code>MONITORR_WEBHOOK_SECRET</code></small>
+    {% else %}
+      <form method="post" action="/webhook/regenerate"
+            onsubmit="return confirm('Generate a new secret? The current URL will stop working.')">
+        <button type="submit" class="secondary outline">Regenerate</button>
+      </form>
+    {% endif %}
+  </div>
+  <small>
+    In Plex: <strong>Settings → Webhooks → Add Webhook</strong>, paste this URL.
+    The host above reflects how you reached this page; adjust it if Plex reaches monitorr through
+    a different host or reverse proxy.
+  </small>
+</article>
+
+<article>
   <header><strong>Sonarr</strong></header>
   <form method="post" action="/settings/sonarr">
     <label>Sonarr URL
