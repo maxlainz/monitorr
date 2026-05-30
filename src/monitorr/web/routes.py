@@ -10,10 +10,8 @@ from fastapi.templating import Jinja2Templates
 
 from monitorr import constants, store, sync
 from monitorr.config import get_settings
-from monitorr.engine import actions
 from monitorr.engine.policy import (
     Policy,
-    effective_policy,
     get_dry_run,
     get_global_policy,
     get_user_filter,
@@ -269,28 +267,6 @@ async def plex_unlink() -> RedirectResponse:
 @router.post("/series/{tvdb_id}/override")
 async def series_override(tvdb_id: int, enabled: str | None = Form(None)) -> RedirectResponse:
     await store.set_override(tvdb_id, enabled is not None, None)
-    return RedirectResponse(url="/series", status_code=303)
-
-
-@router.post("/series/{tvdb_id}/normalize")
-async def series_normalize(tvdb_id: int) -> RedirectResponse:
-    """Fuerza la monitorización a solo-Pilot (opt-in). Respeta dry-run."""
-    cfg = await sonarr.get_config()
-    if cfg is not None:
-        base_url, api_key = cfg
-        series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
-        if series is not None:
-            episodes = await sonarr.get_episodes(base_url, api_key, series.id)
-            policy, _ = await effective_policy(tvdb_id)
-            await actions.normalize_to_pilot(
-                base_url,
-                api_key,
-                tvdb_id,
-                series,
-                episodes,
-                policy.always_have,
-                await get_dry_run(),
-            )
     return RedirectResponse(url="/series", status_code=303)
 
 

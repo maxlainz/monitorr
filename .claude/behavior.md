@@ -67,16 +67,13 @@ borrados reales se conserva siempre.
 Deja monitorizado **solo el piloto** (`S01E01`), buscándolo si le falta fichero. Los episodios
 **ya descargados** que quedan desmonitorizados se **borran** (salvo Always-Have) — desmonitorizar
 un episodio en disco implica borrarlo. A partir de ahí la ventana (GET) monitoriza hacia delante
-episodio a episodio. Quita la necesidad de configurar "Monitor: Pilot" a mano en Sonarr. Respeta
-dry-run. Dos vías:
+episodio a episodio. Quita la necesidad de configurar "Monitor: Pilot" a mano en Sonarr.
 
-- **Automática (set-and-forget)**: la [sincronización](#sincronización--reconciliación) normaliza
-  en cada ciclo toda serie gestionada **sin visionado registrado**, evitando que el RSS/cron de
-  Sonarr acumule descargas de series recién añadidas. Las series **con** visionado las gestiona la
-  ventana y no se tocan aquí. Configurable por `auto_normalize` (ON por defecto), con override por
-  serie.
-- **Manual por serie** ("Normalizar a Pilot"): fuerza la normalización en el momento, también en
-  series que ya estás viendo.
+Es **automática (set-and-forget)** y su **único disparador es la
+[sincronización](#sincronización--reconciliación)**: en cada ciclo normaliza toda serie gestionada
+**sin visionado registrado**, evitando que el RSS/cron de Sonarr acumule descargas de series recién
+añadidas. Las series **con** visionado las gestiona la ventana y no se tocan aquí. No hay acción
+manual. Configurable por `auto_normalize` (ON por defecto), con override por serie; respeta dry-run.
 
 **Episodios desmonitorizados que aún se están descargando** (no importados): se sacan de la cola de
 Sonarr (`DELETE /queue/{id}` con `removeFromClient=false`) para que **no se importen**; el torrent
