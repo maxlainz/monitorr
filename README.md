@@ -62,6 +62,8 @@ services:
       - ./config:/config
     environment:
       - TZ=Europe/Madrid
+      # - PUID=1000   # host user/group that should own ./config (see Permissions below)
+      # - PGID=1000
     restart: unless-stopped
 ```
 
@@ -117,6 +119,23 @@ SQLite and is edited **from the Web UI**. Environment variables only cover infra
 | `TZ` | Time zone (affects grace periods) | `UTC` |
 
 Template in [`.env.example`](.env.example).
+
+### Permissions (PUID/PGID)
+
+monitorr stores its state in the bind-mounted `/config`. The container starts as root, then drops
+to a normal user before running the app and fixes ownership of `/config` so it stays writable.
+Two **container-only** variables control that user (they are read by the entrypoint, not by the
+app):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `PUID` | User id the process runs as (and owner of `/config`) | `1000` |
+| `PGID` | Group id the process runs as | `1000` |
+
+The defaults (`1000:1000`) match the typical desktop/NAS user, so most setups need nothing. If your
+host user differs, set `PUID`/`PGID` to its `id -u` / `id -g` so files in `./config` stay owned by
+you. (If you override the container user yourself, e.g. compose `user:`, the entrypoint skips the
+remap and just runs as that user.)
 
 ## ⚠️ Security
 

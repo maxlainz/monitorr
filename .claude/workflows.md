@@ -66,6 +66,11 @@ Single image in Docker. Example in [`docker-compose.yml`](../docker-compose.yml)
 docker compose up -d
 ```
 
+The container starts as **root**, then [`docker-entrypoint.sh`](../docker-entrypoint.sh) remaps the
+`app` user to `PUID`/`PGID`, `chown`s `/config` and drops privileges via `gosu` before running
+`monitorr`. This makes a bind-mounted `/config` writable regardless of its host ownership (the
+original cause of the `unable to open database file` startup crash on non-root images).
+
 ## Environment variables
 
 Infrastructure only; the app config (Sonarr, window, grace, overrides) lives in SQLite and
@@ -82,6 +87,13 @@ is edited via the Web UI. Defined in [`config.py`](../src/monitorr/config.py).
 | `MONITORR_SYNC_ON_STARTUP` | Sync once on startup if it never ran | `true` | no |
 | `MONITORR_WEBHOOK_SECRET` | Token for the optional webhook endpoint | (empty) | no |
 | `TZ` | Time zone (grace periods) | `UTC` | no |
+
+Container-only (read by [`docker-entrypoint.sh`](../docker-entrypoint.sh), **not** by `config.py`):
+
+| Var | Purpose | Default | Required |
+|---|---|---|---|
+| `PUID` | UID the process runs as / owner of `/config` | `1000` | no |
+| `PGID` | GID the process runs as | `1000` | no |
 
 ## Merge to `main`
 

@@ -17,6 +17,13 @@ All notable changes to monitorr. The format follows
 - The webhook now honors the same Plex `user_filter` as the session poller, so both detection
   paths behave identically.
 
+### Fixed
+
+- **Startup crash on bind-mounted `/config`** (`sqlite3.OperationalError: unable to open database
+  file`): the image ran as a fixed non-root user that couldn't write a host-owned bind mount. It
+  now starts as root and an entrypoint remaps the user to `PUID`/`PGID` (default `1000:1000`),
+  fixes `/config` ownership and drops privileges via `gosu` before running.
+
 ## [1.0.1] - 2026-05-30
 
 ### Changed
