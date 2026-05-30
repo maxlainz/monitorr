@@ -47,6 +47,30 @@ an event was missed.
 
 ## Quick start
 
+### docker compose (recommended)
+
+Create a `docker-compose.yml` (or use the one in this repo):
+
+```yaml
+services:
+  monitorr:
+    image: ghcr.io/maxlainz/monitorr:latest   # or maxlainz/monitorr:latest (Docker Hub)
+    container_name: monitorr
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+    environment:
+      - TZ=Europe/Madrid
+    restart: unless-stopped
+```
+
+Then start it:
+
+```bash
+docker compose up -d
+```
+
 ### docker run
 
 ```bash
@@ -57,14 +81,6 @@ docker run -d \
   -e TZ=Europe/Madrid \
   --restart unless-stopped \
   ghcr.io/maxlainz/monitorr:latest
-```
-
-### docker compose
-
-Use the example [`docker-compose.yml`](docker-compose.yml):
-
-```bash
-docker compose up -d
 ```
 
 Images available on **GHCR** (`ghcr.io/maxlainz/monitorr`) and **Docker Hub**
