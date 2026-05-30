@@ -1,7 +1,9 @@
 services:
   monitorr:
-    image: monitorr:latest
-    # build: .          # descomenta para construir la imagen localmente
+    image: ghcr.io/maxlainz/monitorr:latest
+    # Alternativas:
+    #   image: maxlainz/monitorr:latest   # Docker Hub
+    #   build: .                          # construir la imagen localmente
     container_name: monitorr
     ports:
       - "8080:8080"
