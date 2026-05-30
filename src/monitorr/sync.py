@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from monitorr import constants, store
+from monitorr.engine import actions
+from monitorr.engine.policy import effective_policy, get_dry_run
 from monitorr.engine.window import apply_window
 from monitorr.plex import client as plex
 from monitorr.sonarr import client as sonarr
@@ -48,11 +50,13 @@ async def _run() -> dict[str, int]:
     cfg = await sonarr.get_config()
     if server is None or client_id is None or cfg is None:
         logger.warning("sync: Plex o Sonarr no están listos")
-        return {"shows": 0, "matched": 0}
+        return {"shows": 0, "matched": 0, "normalized": 0}
     uri, token = server
     base_url, api_key = cfg
+    dry_run = await get_dry_run()
 
-    managed = {s.tvdb_id for s in await sonarr.list_series(base_url, api_key)}
+    managed_series = await sonarr.list_series(base_url, api_key)
+    managed = {s.tvdb_id for s in managed_series}
 
     shows = 0
     matched = 0
@@ -76,9 +80,36 @@ async def _run() -> dict[str, int]:
             except Exception:
                 logger.exception("error sincronizando tvdb=%s", show.tvdb_id)
 
-    summary = {"shows": shows, "matched": matched}
+    normalized = await _normalize_unwatched(base_url, api_key, managed_series, dry_run)
+
+    summary = {"shows": shows, "matched": matched, "normalized": normalized}
     await store.set_setting(
         _LAST_SYNC, json.dumps({"at": datetime.now(UTC).isoformat(), **summary})
     )
     logger.info("sync completada: %s", summary)
     return summary
+
+
+async def _normalize_unwatched(
+    base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
+) -> int:
+    """Set-and-forget: cada serie gestionada SIN visionado registrado se reduce a solo-piloto,
+    evitando que Sonarr acumule descargas de series recién añadidas. Las que sí tienen visionado
+    las gestiona la ventana (no se tocan aquí). Respeta override (enabled / auto_normalize) y
+    dry-run."""
+    normalized = 0
+    for series in managed_series:
+        policy, enabled = await effective_policy(series.tvdb_id)
+        if not enabled or not policy.auto_normalize:
+            continue
+        if await store.get_watches(series.tvdb_id):
+            continue
+        try:
+            episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            await actions.normalize_to_pilot(
+                base_url, api_key, series.tvdb_id, series, episodes, policy.always_have, dry_run
+            )
+            normalized += 1
+        except Exception:
+            logger.exception("error normalizando tvdb=%s", series.tvdb_id)
+    return normalized

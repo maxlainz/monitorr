@@ -90,6 +90,10 @@
       Buscar en Sonarr al monitorizar por delante
     </label>
     <label>
+      <input type="checkbox" name="auto_normalize" {% if policy.auto_normalize %}checked{% endif %} />
+      Auto-normalizar a piloto las series sin visionado (set-and-forget)
+    </label>
+    <label>
       <input type="checkbox" name="dry_run" {% if dry_run %}checked{% endif %} />
       Modo dry-run (simula borrados, no borra)
     </label>

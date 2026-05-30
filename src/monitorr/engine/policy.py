@@ -23,6 +23,7 @@ class Policy(BaseModel):
     grace_unwatched_days: int | None = 365
     dormant_days: int | None = None
     search_on_get: bool = True
+    auto_normalize: bool = True
 
 
 async def get_global_policy() -> Policy:

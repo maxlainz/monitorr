@@ -102,7 +102,7 @@ async def test_sync_seeds_watches_and_applies_window() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 1, "matched": 1}
+    assert summary == {"shows": 1, "matched": 1, "normalized": 0}  # 999 visto → no se normaliza
     watches = await store.get_watches(TVDB)
     assert {(w.season, w.episode) for w in watches} == {(1, 1), (1, 2)}
     # Ancla = último visto (1,2): monitoriza por delante (E3) y borra por detrás (E1).
@@ -120,7 +120,7 @@ async def test_sync_skips_shows_not_in_sonarr() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 1, "matched": 0}
+    assert summary == {"shows": 1, "matched": 0, "normalized": 1}  # 999 gestionada y sin ver
     assert not leaves.called  # no se piden episodios de shows no gestionados
 
 
@@ -173,7 +173,49 @@ async def test_sync_continues_when_one_series_errors() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 2, "matched": 1}  # la que falla no cuenta, pero no aborta
+    # la que falla no cuenta como matched; al no tener visionado, se normaliza a piloto.
+    assert summary == {"shows": 2, "matched": 1, "normalized": 1}
     assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {(1, 1), (1, 2)}
     last = await sync.get_last_sync()  # se actualiza pese al error de una serie
     assert last is not None and last["matched"] == 1
+
+
+def _mock_empty_plex() -> None:
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": []}})
+    )
+
+
+@respx.mock
+async def test_sync_auto_normalizes_unwatched_managed_series() -> None:
+    """Una serie gestionada sin visionado se reduce a piloto en la sync (preview en dry-run)."""
+    await _configure_links()  # always_have=[], dry-run ON por defecto
+    _mock_empty_plex()
+    routes = _mock_sonarr()  # serie 999 gestionada con E1, E2, E3 en disco
+
+    summary = await sync.run_sync()
+
+    assert summary == {"shows": 0, "matched": 0, "normalized": 1}
+    # Conserva el piloto (S01E01); el resto descargado queda como borrado pendiente.
+    pending = await store.list_deletions(dry_run=True)
+    assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 3)}
+    assert not routes["delete"].called  # dry-run: no escribe en Sonarr
+
+
+@respx.mock
+async def test_sync_auto_normalize_disabled_by_policy() -> None:
+    """Con auto_normalize=False, una serie sin visionado no se toca."""
+    await _configure_links()
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], auto_normalize=False))
+    _mock_empty_plex()
+    _mock_sonarr()
+
+    summary = await sync.run_sync()
+
+    assert summary == {"shows": 0, "matched": 0, "normalized": 0}
+    assert await store.list_deletions(dry_run=True) == []

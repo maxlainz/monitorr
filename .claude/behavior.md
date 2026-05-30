@@ -52,7 +52,7 @@ por serie/episodio (último visto, primer no visto, última actividad). Respetan
 
 `dry_run` es el **interruptor maestro de seguridad**, **ON por defecto**. Con dry-run ON,
 monitorr **no realiza ninguna escritura en Sonarr**: ni monitorizar, ni buscar, ni
-[forzar a Pilot](#forzar-a-pilot-opt-in), ni borrar. Solo registra/loguea lo que haría; los
+[normalizar a Pilot](#normalizar-a-pilot), ni borrar. Solo registra/loguea lo que haría; los
 borrados quedan como **pendientes** para revisar. Aplica a todo (lógica en vivo y
 [sincronización](#sincronización--reconciliación)). Centralizado en `engine/actions.py`. Cuando
 confías en el comportamiento, lo desactivas en Ajustes y todo pasa a ejecutarse de verdad.
@@ -62,13 +62,21 @@ sync re-previsualizan en cada ciclo sin acumular duplicados) y se **auto-limpian
 episodio de verdad se retira su preview, y al desactivar dry-run se vacían todos. El historial de
 borrados reales se conserva siempre.
 
-## Forzar a Pilot (opt-in)
+## Normalizar a Pilot
 
-Acción **manual** por serie ("Normalizar a Pilot"): deja monitorizado solo el piloto (`S01E01`),
-buscándolo si le falta fichero. Los episodios **ya descargados** que quedan desmonitorizados se
-**borran** (salvo Always-Have) — desmonitorizar un episodio en disco implica borrarlo. A partir de
-ahí la ventana (GET) monitoriza hacia delante episodio a episodio. Quita la necesidad de configurar
-"Monitor: Pilot" a mano en Sonarr. Nunca es automática; respeta dry-run.
+Deja monitorizado **solo el piloto** (`S01E01`), buscándolo si le falta fichero. Los episodios
+**ya descargados** que quedan desmonitorizados se **borran** (salvo Always-Have) — desmonitorizar
+un episodio en disco implica borrarlo. A partir de ahí la ventana (GET) monitoriza hacia delante
+episodio a episodio. Quita la necesidad de configurar "Monitor: Pilot" a mano en Sonarr. Respeta
+dry-run. Dos vías:
+
+- **Automática (set-and-forget)**: la [sincronización](#sincronización--reconciliación) normaliza
+  en cada ciclo toda serie gestionada **sin visionado registrado**, evitando que el RSS/cron de
+  Sonarr acumule descargas de series recién añadidas. Las series **con** visionado las gestiona la
+  ventana y no se tocan aquí. Configurable por `auto_normalize` (ON por defecto), con override por
+  serie.
+- **Manual por serie** ("Normalizar a Pilot"): fuerza la normalización en el momento, también en
+  series que ya estás viendo.
 
 **Episodios desmonitorizados que aún se están descargando** (no importados): se sacan de la cola de
 Sonarr (`DELETE /queue/{id}` con `removeFromClient=false`) para que **no se importen**; el torrent
@@ -81,13 +89,15 @@ La detección en vivo (poller + webhook) solo dispara al ver un episodio. La **s
 estado visto leyendo la biblioteca de Plex (ver [`plex.md`](plex.md)): por cada serie gestionada por
 Sonarr, registra los episodios vistos con su fecha real (alimenta los grace periods) y aplica la
 ventana para el **último visto**. Cubre tres casos que el modo en vivo no ve: series ya empezadas al
-instalar, episodios marcados a mano en Plex, y visionados con monitorr apagado. Se dispara con el
-botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el dry-run del motor.
+instalar, episodios marcados a mano en Plex, y visionados con monitorr apagado. Además **normaliza
+a piloto** las series gestionadas sin visionado (ver [Normalizar a Pilot](#normalizar-a-pilot)). Se
+dispara con el botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el dry-run
+del motor.
 
 ## Configuración
 
-- **Global única**: una política (GET, KEEP, Always-Have, grace) para todas las series + el
-  interruptor dry-run.
+- **Global única**: una política (GET, KEEP, Always-Have, grace, auto-normalize) para todas las
+  series + el interruptor dry-run.
 - **Override por serie**: ajustes manuales que sustituyen la política global en series concretas.
 
 ## Unidad temporadas (semántica)
