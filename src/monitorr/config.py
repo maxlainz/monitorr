@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     sync_on_startup: bool = True
     webhook_secret: str = ""
 
+    # Metadatos de build, inyectados en la imagen Docker (vacíos en dev).
+    build_sha: str = ""
+    build_date: str = ""
+
     @property
     def db_path(self) -> Path:
         return self.config_dir / "monitorr.db"

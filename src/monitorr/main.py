@@ -8,7 +8,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI
 
-from monitorr import sync
+from monitorr import __version__, sync
 from monitorr.config import get_settings
 from monitorr.db import init_db
 from monitorr.engine.grace import sweep
@@ -68,11 +68,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
-    app = FastAPI(title="monitorr", lifespan=lifespan)
+    app = FastAPI(title="monitorr", version=__version__, lifespan=lifespan)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/version")
+    async def version_info() -> dict[str, str]:
+        return {
+            "version": __version__,
+            "build_sha": settings.build_sha,
+            "build_date": settings.build_date,
+        }
 
     mount_web(app)
     return app

@@ -1,9 +1,19 @@
 [project]
 name = "monitorr"
-version = "0.1.0"
+version = "1.0.0"
 description = "Monitoriza el visionado en Plex y gestiona episodios en Sonarr (monitorizar/conservar/borrar) solo vía API."
 readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
+authors = [{ name = "Max Lainz" }]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+    "Framework :: FastAPI",
+    "Topic :: Multimedia :: Video",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",

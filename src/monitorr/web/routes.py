@@ -8,7 +8,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from monitorr import constants, store, sync
+from monitorr import __version__, constants, store, sync
 from monitorr.config import get_settings
 from monitorr.engine.policy import (
     Policy,
@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=WEB_DIR / "templates")
+templates.env.globals["app_version"] = __version__
 
 router = APIRouter()
 
