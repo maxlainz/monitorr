@@ -1,128 +1,128 @@
-# Comportamiento: ventana de episodios
+# Behavior: episode window
 
-Lógica central de monitorr. Define **qué** hace cuando detecta que se ha visto un episodio.
-El *cómo* de cada sistema externo vive en [`plex.md`](plex.md) (detección/correlación) y
-[`sonarr.md`](sonarr.md) (monitorizar/buscar/borrar). Prior art en [`episeerr.md`](episeerr.md).
+monitorr's core logic. Defines **what** it does when it detects that an episode has been watched.
+The *how* of each external system lives in [`plex.md`](plex.md) (detection/correlation) and
+[`sonarr.md`](sonarr.md) (monitor/search/delete).
 
-## Disparo
+## Trigger
 
-El motor se activa cuando una serie se considera **vista hasta el episodio E** (ancla):
-- Por polling: `viewOffset/duration ≥ ~0.9`, o una sesión que estaba **casi completa**
-  (`progress ≥ NEAR_COMPLETE_PROGRESS`, 0.85 en `constants.py`) **desaparece** entre sondeos
-  (el usuario terminó y la sesión se cerró antes de cruzar el umbral).
-- Por webhook opcional: evento `media.scrobble`.
+The engine activates when a show is considered **watched up to episode E** (anchor):
+- By polling: `viewOffset/duration ≥ ~0.9`, or a session that was **almost complete**
+  (`progress ≥ NEAR_COMPLETE_PROGRESS`, 0.85 in `constants.py`) **disappears** between polls
+  (the user finished and the session closed before crossing the threshold).
+- By optional webhook: `media.scrobble` event.
 
-Cada disparo recalcula la ventana de **esa serie** alrededor de E. El disparo es idempotente:
-el debounce del poller usa la clave `(sessionKey, temporada, episodio)`, no solo `sessionKey`
-(Plex puede reutilizar el `sessionKey` al auto-reproducir el siguiente episodio de un binge, así
-que avanzar de episodio dispara, pero re-sondear el mismo no).
+Each trigger recomputes the window of **that show** around E. The trigger is idempotent:
+the poller's debounce uses the key `(sessionKey, season, episode)`, not just `sessionKey`
+(Plex can reuse the `sessionKey` when auto-playing the next episode of a binge, so
+advancing an episode triggers, but re-polling the same one doesn't).
 
-## Ventana
+## Window
 
-Dos parámetros, configurables en **episodios o temporadas**:
+Two parameters, configurable in **episodes or seasons**:
 
-- **GET (N por delante)**: mantener **exactamente** los N episodios siguientes a E en orden de
-  emisión. Los monitoriza y busca (`episode/monitor` + `EpisodeSearch`) y **recorta lo que
-  sobra por delante**: lo que excede la ventana se **borra** (`episodefile` delete) si está en
-  disco o se **desmonitoriza** si aún no se ha descargado (reason `ahead`), salvo *Always-Have*.
-  Es una ventana deslizante: al avanzar de episodio el borde se vuelve a monitorizar/buscar.
-- **KEEP (N por detrás)**: conservar en disco los N episodios anteriores a E (incluido E). El
-  resto, más antiguo que la ventana KEEP, se **borra** (`episodefile` delete) y se
-  **desmonitoriza** (reason `keep`), salvo que esté protegido por *Always-Have*.
+- **GET (N ahead)**: keep **exactly** the N episodes following E in airing order.
+  It monitors and searches them (`episode/monitor` + `EpisodeSearch`) and **trims the surplus
+  ahead**: anything beyond the window is **deleted** (`episodefile` delete) if it's on
+  disk or **unmonitored** if it hasn't been downloaded yet (reason `ahead`), except *Always-Have*.
+  It's a sliding window: when advancing an episode the edge is re-monitored/searched.
+- **KEEP (N behind)**: keep on disk the N episodes before E (including E). The
+  rest, older than the KEEP window, is **deleted** (`episodefile` delete) and
+  **unmonitored** (reason `keep`), unless protected by *Always-Have*.
 
-## Always-Have (protección)
+## Always-Have (protection)
 
-Episodios que **nunca** se borran aunque caigan fuera de KEEP o de un grace period. Patrones:
-`S01E01` (piloto), `S*E01` (primer episodio de cada temporada), `S*` (temporada completa). Es
-la primera comprobación antes de cualquier borrado.
+Episodes that are **never** deleted even if they fall outside KEEP or a grace period. Patterns:
+`S01E01` (pilot), `S*E01` (first episode of each season), `S*` (full season). It's
+the first check before any deletion.
 
-## Grace periods (borrado por inactividad)
+## Grace periods (deletion by inactivity)
 
-Complementan a KEEP con criterio temporal (días sin actividad de la serie):
+They complement KEEP with a temporal criterion (days without activity on the show):
 
-- **watched**: borra episodios ya vistos pasados X días. *Default: 7.*
-- **unwatched**: borra episodios no vistos pasados X días. *Default: 365.*
-- **dormant**: borra todo lo borrable de la serie si lleva X días sin visionado. *Default: sin
-  asignar (`None`) → desactivado: una serie inactiva nunca se purga en bloque.*
+- **watched**: deletes already-watched episodes after X days. *Default: 7.*
+- **unwatched**: deletes unwatched episodes after X days. *Default: 365.*
+- **dormant**: deletes everything deletable from the show if it has gone X days without viewing.
+  *Default: unassigned (`None`) → disabled: an inactive show is never purged in bulk.*
 
-Cada grace es independiente; dejar uno **sin asignar** lo desactiva. Requiere **persistir estado**
-por serie/episodio (último visto, primer no visto, última actividad). Respetan Always-Have.
+Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
+per show/episode (last watched, first unwatched, last activity). They respect Always-Have.
 
-## Dry-run (interruptor maestro)
+## Dry-run (master switch)
 
-`dry_run` es el **interruptor maestro de seguridad**, **ON por defecto**. Con dry-run ON,
-monitorr **no realiza ninguna escritura en Sonarr**: ni monitorizar, ni buscar, ni
-[normalizar a Pilot](#normalizar-a-pilot), ni borrar. Solo registra/loguea lo que haría; los
-borrados quedan como **pendientes** para revisar. Aplica a todo (lógica en vivo y
-[sincronización](#sincronización--reconciliación)). Centralizado en `engine/actions.py`. Cuando
-confías en el comportamiento, lo desactivas en Ajustes y todo pasa a ejecutarse de verdad.
+`dry_run` is the **master safety switch**, **ON by default**. With dry-run ON,
+monitorr **performs no writes to Sonarr**: no monitoring, no searching, no
+[normalize to Pilot](#normalize-to-pilot), no deleting. It only records/logs what it would do; the
+deletions remain as **pending** for review. It applies to everything (live logic and
+[sync](#sync--reconciliation)). Centralized in `engine/actions.py`. When
+you trust the behavior, you disable it in Settings and everything starts running for real.
 
-Los **previews** pendientes se **deduplican** (una fila por episodio: el barrido de grace y la
-sync re-previsualizan en cada ciclo sin acumular duplicados) y se **auto-limpian**: al borrar el
-episodio de verdad se retira su preview, y al desactivar dry-run se vacían todos. El historial de
-borrados reales se conserva siempre.
+The pending **previews** are **deduplicated** (one row per episode: the grace sweep and the
+sync re-preview each cycle without accumulating duplicates) and **auto-cleaned**: when the
+episode is deleted for real its preview is removed, and when dry-run is disabled they're all emptied. The history of
+real deletions is always kept.
 
-## Normalizar a Pilot
+## Normalize to Pilot
 
-Deja monitorizado **solo el piloto** (`S01E01`), buscándolo si le falta fichero. Los episodios
-**ya descargados** que quedan desmonitorizados se **borran** (salvo Always-Have) — desmonitorizar
-un episodio en disco implica borrarlo. A partir de ahí la ventana (GET) monitoriza hacia delante
-episodio a episodio. Quita la necesidad de configurar "Monitor: Pilot" a mano en Sonarr.
+Leaves **only the pilot** (`S01E01`) monitored, searching for it if it's missing a file. The
+**already-downloaded** episodes that end up unmonitored are **deleted** (except Always-Have) —
+unmonitoring an episode on disk implies deleting it. From there the window (GET) monitors forward
+episode by episode. It removes the need to configure "Monitor: Pilot" by hand in Sonarr.
 
-Es **automática (set-and-forget)** y su **único disparador es la
-[sincronización](#sincronización--reconciliación)**: en cada ciclo normaliza toda serie gestionada
-**sin visionado registrado**, evitando que el RSS/cron de Sonarr acumule descargas de series recién
-añadidas. Las series **con** visionado las gestiona la ventana y no se tocan aquí. No hay acción
-manual. Configurable por `auto_normalize` (ON por defecto), con override por serie; respeta dry-run.
+It's **automatic (set-and-forget)** and its **only trigger is the
+[sync](#sync--reconciliation)**: each cycle it normalizes every managed show
+**with no recorded viewing**, preventing Sonarr's RSS/cron from accumulating downloads of newly
+added shows. Shows **with** viewing are handled by the window and not touched here. There is no manual
+action. Configurable via `auto_normalize` (ON by default), with per-series override; respects dry-run.
 
-**Episodios desmonitorizados que aún se están descargando** (no importados): se sacan de la cola de
-Sonarr (`DELETE /queue/{id}` con `removeFromClient=false`) para que **no se importen**; el torrent
-se queda en el cliente sembrando hasta su ratio, que lo elimina el propio cliente de descargas (no
-monitorr). Sin desmonitorizar antes, Sonarr importaría igualmente la descarga ya iniciada.
+**Unmonitored episodes that are still downloading** (not imported): they're pulled from Sonarr's
+queue (`DELETE /queue/{id}` with `removeFromClient=false`) so they **aren't imported**; the torrent
+stays in the client seeding until its ratio, which the download client itself removes (not
+monitorr). Without unmonitoring first, Sonarr would import the already-started download anyway.
 
-## Sincronización / reconciliación
+## Sync / reconciliation
 
-La detección en vivo (poller + webhook) solo dispara al ver un episodio. La **sync** reconcilia el
-estado visto leyendo la biblioteca de Plex (ver [`plex.md`](plex.md)): por cada serie gestionada por
-Sonarr, registra los episodios vistos con su fecha real (alimenta los grace periods) y aplica la
-ventana para el **último visto**. Cubre tres casos que el modo en vivo no ve: series ya empezadas al
-instalar, episodios marcados a mano en Plex, y visionados con monitorr apagado. Además **normaliza
-a piloto** las series gestionadas sin visionado (ver [Normalizar a Pilot](#normalizar-a-pilot)). Se
-dispara con el botón "Sincronizar ahora", al arrancar (una vez) y periódicamente. Hereda el dry-run
-del motor.
+Live detection (poller + webhook) only triggers when an episode is watched. The **sync** reconciles the
+watched state by reading the Plex library (see [`plex.md`](plex.md)): for each show managed by
+Sonarr, it records the watched episodes with their real date (feeds the grace periods) and applies the
+window for the **last watched**. It covers three cases the live mode doesn't see: shows already started at
+install, episodes marked by hand in Plex, and viewing with monitorr off. It also **normalizes
+to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normalize-to-pilot)). It's
+triggered by the "Sync now" button, on startup (once) and periodically. It inherits the engine's
+dry-run.
 
-## Configuración
+## Configuration
 
-- **Global única**: una política (GET, KEEP, Always-Have, grace, auto-normalize) para todas las
-  series + el interruptor dry-run.
-- **Override por serie**: ajustes manuales que sustituyen la política global en series concretas.
+- **Single global**: one policy (GET, KEEP, Always-Have, grace, auto-normalize) for all
+  shows + the dry-run switch.
+- **Per-series override**: manual settings that replace the global policy on specific shows.
 
-## Unidad temporadas (semántica)
+## Seasons unit (semantics)
 
-- **GET por temporadas (N)**: mantiene los episodios tras E con `season ≤ E.season + N`
-  (resto de la temporada actual + las N siguientes); lo de temporadas más adelante se recorta
-  (se borra si está en disco, se desmonitoriza si no).
-- **KEEP por temporadas (N)**: conserva los episodios con `season ≥ E.season − (N−1)`; borra
-  los de temporadas más antiguas.
-- **Monitorizado a nivel temporada**: monitorr es autoridad también sobre el flag `monitored`
-  de cada **temporada** (no solo de episodio), porque los episodios nuevos que Sonarr descubre
-  **heredan el flag de su temporada** y se auto-monitorizarían. Por **episodios** deja **todas**
-  las temporadas off (control 100 % por episodio); por **temporadas** deja on solo las de la
-  ventana GET. Se aplica en ventana y normalize (temporadas antes que episodios, a prueba de
-  cascada), vía `GET`-modify-`PUT /series/{id}` solo si cambia, y respeta dry-run. Neutraliza
-  overrides de temporada hechos a mano en Sonarr.
+- **GET by seasons (N)**: keeps the episodes after E with `season ≤ E.season + N`
+  (rest of the current season + the next N); anything in later seasons is trimmed
+  (deleted if on disk, unmonitored if not).
+- **KEEP by seasons (N)**: keeps the episodes with `season ≥ E.season − (N−1)`; deletes
+  those of older seasons.
+- **Season-level monitoring**: monitorr is also the authority over the `monitored` flag
+  of each **season** (not just the episode), because the new episodes Sonarr discovers
+  **inherit their season's flag** and would auto-monitor. By **episodes** it leaves **all**
+  seasons off (100% per-episode control); by **seasons** it leaves on only those in the
+  GET window. It's applied in window and normalize (seasons before episodes, cascade-proof),
+  via `GET`-modify-`PUT /series/{id}` only if it changes, and respects dry-run. It neutralizes
+  season overrides done by hand in Sonarr.
 
-## Edge cases (resueltos en el MVP)
+## Edge cases (resolved in the MVP)
 
-- **Cruce de temporada**: la ventana razona en **orden de emisión** `(season, episode)`, no por
-  temporada aislada; el "siguiente" puede caer en la temporada siguiente.
-- **Especiales (`S00`)**: **excluidos** de GET/KEEP/grace.
-- **Episodio sin fichero** (`hasFile:false`): no hay nada que borrar; solo monitorización.
-- **Orden aired vs absolute (anime)**: el MVP usa siempre orden aired `(season, episode)`.
-  Limitación conocida: anime con numeración absoluta puede no ordenarse como se espera.
-- **Multiusuario**: fuera de v1 (se asume un consumidor). Hay **filtro opcional de usuarios**
-  en Ajustes para limitar qué reproducciones disparan acciones.
-- **Sync resiliente**: una serie con error (404, timeout, episodio inexistente) se loguea y se
-  salta; no aborta el resto de la sincronización ni deja `last_sync` sin actualizar.
-- **Sesión sin TVDB**: se avisa una vez y se cachea para no re-resolver (ni re-avisar) en cada
-  sondeo; se reintenta cuando esa serie vuelve a reproducirse.
+- **Season crossover**: the window reasons in **airing order** `(season, episode)`, not by
+  isolated season; the "next" one can fall in the following season.
+- **Specials (`S00`)**: **excluded** from GET/KEEP/grace.
+- **Episode without file** (`hasFile:false`): there's nothing to delete; monitoring only.
+- **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
+  Known limitation: anime with absolute numbering may not order as expected.
+- **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**
+  in Settings to limit which playbacks trigger actions.
+- **Resilient sync**: a show with an error (404, timeout, nonexistent episode) is logged and
+  skipped; it doesn't abort the rest of the sync nor leave `last_sync` unupdated.
+- **Session without TVDB**: it's warned once and cached so it isn't re-resolved (or re-warned) on each
+  poll; it's retried when that show is played again.

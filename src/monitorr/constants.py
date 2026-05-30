@@ -1,12 +1,12 @@
-"""Claves de la tabla `setting` y constantes compartidas."""
+"""Keys of the `setting` table and shared constants."""
 
 PLEX_PRODUCT = "monitorr"
 
-# Progreso a partir del cual una sesión que desaparece entre sondeos se considera vista
-# (ver .claude/behavior.md → "Disparo": "la sesión casi completa desaparece").
+# Progress from which a session that disappears between polls is considered watched
+# (see .claude/behavior.md → "Trigger": "the almost-complete session disappears").
 NEAR_COMPLETE_PROGRESS = 0.85
 
-# Claves en la tabla setting
+# Keys in the setting table
 PLEX_CLIENT_ID = "plex_client_id"
 PLEX_ACCOUNT_TOKEN = "plex_account_token"
 PLEX_SERVER_URI = "plex_server_uri"

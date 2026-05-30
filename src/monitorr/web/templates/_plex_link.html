@@ -1,21 +1,21 @@
 <div id="plex-link">
 {% if state == "waiting" %}
-  <p>Esperando autorización en Plex…
-    <a href="{{ auth_url }}" target="_blank" rel="noopener">Abrir Plex</a></p>
+  <p>Waiting for authorization in Plex…
+    <a href="{{ auth_url }}" target="_blank" rel="noopener">Open Plex</a></p>
   <div hx-get="/plex/link/poll" hx-trigger="every 2s" hx-target="#plex-link" hx-swap="outerHTML"></div>
 {% elif state == "choose" %}
   <form method="post" action="/plex/server">
-    <p>Elige el servidor:</p>
+    <p>Choose the server:</p>
     {% for s in servers %}
     <label>
       <input type="radio" name="client_identifier" value="{{ s.client_identifier }}" required />
       {{ s.name }}
     </label>
     {% endfor %}
-    <button type="submit">Usar este servidor</button>
+    <button type="submit">Use this server</button>
   </form>
 {% elif state == "linked" %}
-  <p>✅ Vinculado a <strong>{{ server_name }}</strong>. <a href="/settings">Recargar</a></p>
+  <p>✅ Linked to <strong>{{ server_name }}</strong>. <a href="/settings">Reload</a></p>
 {% else %}
   <p>⚠️ {{ message }}</p>
 {% endif %}

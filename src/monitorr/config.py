@@ -5,10 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Configuración de infraestructura, leída de env vars `MONITORR_*`.
+    """Infrastructure configuration, read from `MONITORR_*` env vars.
 
-    La configuración de la app (Sonarr, parámetros de ventana, grace, overrides) vive en
-    SQLite y se edita por la Web UI, no aquí.
+    The app configuration (Sonarr, window parameters, grace, overrides) lives in
+    SQLite and is edited via the Web UI, not here.
     """
 
     model_config = SettingsConfigDict(env_prefix="MONITORR_", env_file=".env", extra="ignore")
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     sync_on_startup: bool = True
     webhook_secret: str = ""
 
-    # Metadatos de build, inyectados en la imagen Docker (vacíos en dev).
+    # Build metadata, injected into the Docker image (empty in dev).
     build_sha: str = ""
     build_date: str = ""
 

@@ -30,7 +30,7 @@ async def _configure() -> None:
 
 @pytest.fixture
 def captured(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int, int]]:
-    """Captura las llamadas a process_watch y resuelve siempre el mismo tvdb."""
+    """Captures the calls to process_watch and always resolves the same tvdb."""
     calls: list[tuple[int, int, int]] = []
 
     async def fake_process_watch(tvdb_id: int, season: int, episode: int) -> None:
@@ -59,12 +59,12 @@ async def test_binge_fires_each_episode_same_session_key(
     unresolved: set[str] = set()
     prev: dict[poller.WatchKey, poller._PrevSession] = {}
 
-    # Mismo sessionKey al auto-reproducir: E1, luego E2, luego re-sondeo de E2.
+    # Same sessionKey on auto-play: E1, then E2, then re-poll of E2.
     _serve(monkeypatch, [_session("s1", 1, 1, 0.95)])
     await poller._poll_once(fired, unresolved, prev)
     _serve(monkeypatch, [_session("s1", 1, 2, 0.95)])
     await poller._poll_once(fired, unresolved, prev)
-    await poller._poll_once(fired, unresolved, prev)  # E2 de nuevo → debounce
+    await poller._poll_once(fired, unresolved, prev)  # E2 again → debounce
 
     assert captured == [(TVDB, 1, 1), (TVDB, 1, 2)]
 
@@ -77,12 +77,12 @@ async def test_near_complete_session_disappearing_counts_as_watched(
     unresolved: set[str] = set()
     prev: dict[poller.WatchKey, poller._PrevSession] = {}
 
-    # 0.86 < umbral 0.9 → no dispara en vivo, pero ≥ NEAR_COMPLETE.
+    # 0.86 < threshold 0.9 → doesn't fire live, but ≥ NEAR_COMPLETE.
     _serve(monkeypatch, [_session("s2", 1, 5, 0.86)])
     await poller._poll_once(fired, unresolved, prev)
     assert captured == []
 
-    _serve(monkeypatch, [])  # la sesión desaparece
+    _serve(monkeypatch, [])  # the session disappears
     await poller._poll_once(fired, unresolved, prev)
     assert captured == [(TVDB, 1, 5)]
 

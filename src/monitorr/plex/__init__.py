@@ -1,4 +1,4 @@
-"""Integración Plex: login, descubrimiento de servidor, detección de visionado y correlación.
+"""Plex integration: login, server discovery, viewing detection and correlation.
 
-Contrato definido aquí; implementación pendiente. Detalle en ../../../.claude/plex.md.
+Contract defined here; implementation pending. Details in ../../../.claude/plex.md.
 """

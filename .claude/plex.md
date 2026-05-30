@@ -1,103 +1,103 @@
-# Integración Plex
+# Plex integration
 
-Fuente de watch status elegida para v1. monitorr lee de Plex **solo vía API**, nunca del
-disco. Cubre cuatro cosas: vinculación (login), descubrimiento del servidor, detección de
-visionado y correlación con Sonarr.
+The watch-status source chosen for v1. monitorr reads from Plex **API-only**, never from
+disk. It covers four things: linking (login), server discovery, viewing detection
+and correlation with Sonarr.
 
-> Restricción de diseño: Plex pone difícil obtener el `X-Plex-Token` a mano. Por eso la
-> vinculación es **"Login with Plex"** (flujo PIN/OAuth), no un token pegado en config.
+> Design constraint: Plex makes it hard to get the `X-Plex-Token` by hand. That's why
+> linking is **"Login with Plex"** (PIN/OAuth flow), not a token pasted in config.
 
-> Implementado en [`src/monitorr/plex/`](../src/monitorr/plex) (`auth.py`, `client.py`,
+> Implemented in [`src/monitorr/plex/`](../src/monitorr/plex) (`auth.py`, `client.py`,
 > `poller.py`, `webhook.py`).
 
-## Identidad del cliente
+## Client identity
 
-monitorr genera **una vez** un `X-Plex-Client-Identifier` (UUID estable) y lo **persiste**.
-Debe ser el mismo en todas las llamadas a plex.tv y al PMS; si cambia, el login y los
-recursos asociados dejan de reconocerse. Va siempre junto con `X-Plex-Product` (nombre de la
-app) en las cabeceras.
+monitorr generates **once** an `X-Plex-Client-Identifier` (stable UUID) and **persists** it.
+It must be the same in all calls to plex.tv and to the PMS; if it changes, the login and
+associated resources stop being recognized. It always goes together with `X-Plex-Product` (the
+app name) in the headers.
 
-## Vinculación: Login with Plex (flujo PIN/OAuth)
+## Linking: Login with Plex (PIN/OAuth flow)
 
-Evita el token manual. El usuario inicia sesión en plex.tv y monitorr recibe el token.
+Avoids the manual token. The user signs in on plex.tv and monitorr receives the token.
 
-1. **Crear PIN**: `POST https://plex.tv/api/v2/pins?strong=true` con cabeceras
-   `X-Plex-Product` y `X-Plex-Client-Identifier`. Respuesta: `{ id, code, ... }`.
-   El PIN **caduca a los pocos minutos** → si expira, reiniciar el flujo.
-2. **Mandar al usuario a autorizar**: abrir en navegador
+1. **Create PIN**: `POST https://plex.tv/api/v2/pins?strong=true` with headers
+   `X-Plex-Product` and `X-Plex-Client-Identifier`. Response: `{ id, code, ... }`.
+   The PIN **expires within a few minutes** → if it expires, restart the flow.
+2. **Send the user to authorize**: open in the browser
    `https://app.plex.tv/auth#?clientID=<clientId>&code=<code>&context[device][product]=<product>&forwardUrl=<callback>`
-   (parámetros URL-encoded). El usuario hace login y autoriza.
-3. **Polling del PIN**: `GET https://plex.tv/api/v2/pins/{id}` con `code` y
-   `X-Plex-Client-Identifier`. Mientras no esté reclamado, `authToken` es `null`; al
-   autorizar llega el `authToken`. **Persistir** ese token (es la credencial de cuenta).
+   (URL-encoded parameters). The user logs in and authorizes.
+3. **Poll the PIN**: `GET https://plex.tv/api/v2/pins/{id}` with `code` and
+   `X-Plex-Client-Identifier`. While it's not claimed, `authToken` is `null`; on
+   authorizing the `authToken` arrives. **Persist** that token (it's the account credential).
 
-## Descubrimiento del servidor
+## Server discovery
 
-Con el `authToken` de cuenta, listar servidores en vez de pedir IP/puerto a mano:
+With the account `authToken`, list servers instead of asking for IP/port by hand:
 
-- `GET https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1` con `X-Plex-Token`
-  (el authToken) y `X-Plex-Client-Identifier`.
-- Filtrar los recursos cuyo `provides` contenga `server`.
-- Cada servidor trae su propio `accessToken` y un array `Connection` con
+- `GET https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1` with `X-Plex-Token`
+  (the authToken) and `X-Plex-Client-Identifier`.
+- Filter the resources whose `provides` contains `server`.
+- Each server brings its own `accessToken` and a `Connection` array with
   `protocol` / `address` / `port` / `uri` / `local` / `relay`.
 
-**Elección de conexión**: preferir `local` (LAN), luego conexión directa remota, y `relay`
-como último recurso (lento). Para hablar con ese PMS se usa el **`accessToken` del servidor**
-como `X-Plex-Token`, no necesariamente el de cuenta.
+**Connection choice**: prefer `local` (LAN), then direct remote connection, and `relay`
+as a last resort (slow). To talk to that PMS, use the **server's `accessToken`**
+as `X-Plex-Token`, not necessarily the account one.
 
-## Detección de visionado (mecanismo principal: polling)
+## Viewing detection (primary mechanism: polling)
 
-Polling de sesiones activas, porque funciona solo con el token del login: **sin Plex Pass y
-sin configuración manual**.
+Polling of active sessions, because it works with only the login token: **no Plex Pass and
+no manual configuration**.
 
-- `GET {serverUri}/status/sessions` con `X-Plex-Token`.
-- Por cada sesión de tipo episodio: serie en `grandparentTitle`, temporada en `parentIndex`,
-  episodio en `index`, id interno en `ratingKey` / `grandparentRatingKey`, progreso en
+- `GET {serverUri}/status/sessions` with `X-Plex-Token`.
+- For each episode-type session: show in `grandparentTitle`, season in `parentIndex`,
+  episode in `index`, internal id in `ratingKey` / `grandparentRatingKey`, progress in
   `viewOffset` / `duration`.
-- **"Visto"** cuando `viewOffset / duration ≥ ~0.9`, o cuando la sesión que estaba casi
-  completa desaparece entre dos ciclos de polling.
-- **Debounce obligatorio**: guardar estado del último episodio disparado por sesión para no
-  re-procesar el mismo episodio en cada ciclo. El intervalo de polling es configurable.
+- **"Watched"** when `viewOffset / duration ≥ ~0.9`, or when the session that was almost
+  complete disappears between two polling cycles.
+- **Mandatory debounce**: save the state of the last triggered episode per session so as not to
+  re-process the same episode each cycle. The polling interval is configurable.
 
-## Webhook `media.scrobble` (opcional, menor latencia)
+## `media.scrobble` webhook (optional, lower latency)
 
-Mejora opcional para usuarios con **Plex Pass**. No se automatiza con el login: el usuario
-debe añadir la URL del webhook en Plex (Settings → Webhooks).
+Optional improvement for users with **Plex Pass**. It's not automated with the login: the user
+must add the webhook URL in Plex (Settings → Webhooks).
 
-- Evento de "visto" = `media.scrobble` (dispara al completar, ~90%; umbral no configurable).
-- Payload `multipart` con JSON; `Metadata` de un episodio incluye: `type:"episode"`,
-  `grandparentTitle`, `parentIndex` (temporada), `index` (episodio), `ratingKey`,
-  `grandparentRatingKey`, `guid` y un array `Guid` con IDs externos (`tvdb://`/`tmdb://`/`imdb://`).
-- No usar a la vez que [Tautulli](tautulli.md) como fuente: causaría doble procesamiento.
+- "Watched" event = `media.scrobble` (triggers on completion, ~90%; threshold not configurable).
+- `multipart` payload with JSON; an episode's `Metadata` includes: `type:"episode"`,
+  `grandparentTitle`, `parentIndex` (season), `index` (episode), `ratingKey`,
+  `grandparentRatingKey`, `guid` and a `Guid` array with external IDs (`tvdb://`/`tmdb://`/`imdb://`).
+- Don't use it together with [Tautulli](tautulli.md) as a source: it would cause double processing.
 
-## Correlación con Sonarr (a TVDB)
+## Correlation with Sonarr (to TVDB)
 
-Sonarr indexa por `tvdbId`. El array `Guid` del webhook **no siempre** trae el TVDB de la
-serie, así que el camino fiable es resolver el metadato de la serie:
+Sonarr indexes by `tvdbId`. The webhook's `Guid` array **doesn't always** bring the show's
+TVDB, so the reliable path is to resolve the show's metadata:
 
-- `GET {serverUri}/library/metadata/{grandparentRatingKey}?includeGuids=1` y extraer el
-  `tvdb://<id>` del array `Guid`.
-- Con ese `tvdbId` + `parentIndex` (temporada) + `index` (episodio) se localiza el episodio
-  exacto en Sonarr (ver [`sonarr.md`](sonarr.md)).
+- `GET {serverUri}/library/metadata/{grandparentRatingKey}?includeGuids=1` and extract the
+  `tvdb://<id>` from the `Guid` array.
+- With that `tvdbId` + `parentIndex` (season) + `index` (episode) the exact episode
+  is located in Sonarr (see [`sonarr.md`](sonarr.md)).
 
-## Escaneo de biblioteca (sincronización)
+## Library scan (sync)
 
-La [sincronización](behavior.md) reconstruye "hasta qué episodio se ha visto cada serie" sin
-esperar a una reproducción, recorriendo la biblioteca:
+The [sync](behavior.md) reconstructs "up to which episode each show has been watched" without
+waiting for a playback, by traversing the library:
 
-- `GET {serverUri}/library/sections` → secciones; quedarse con `type=="show"` (TV).
-- `GET {serverUri}/library/sections/{key}/all?type=2&includeGuids=1` → series con `ratingKey`,
-  `title` y `Guid[]` (→ tvdb).
-- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → todos los episodios con
-  `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Vistos = `viewCount>0`; el ancla es el
-  máximo `(season, episode)` visto, y `lastViewedAt` siembra la fecha real para los grace periods.
+- `GET {serverUri}/library/sections` → sections; keep `type=="show"` (TV).
+- `GET {serverUri}/library/sections/{key}/all?type=2&includeGuids=1` → shows with `ratingKey`,
+  `title` and `Guid[]` (→ tvdb).
+- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → all episodes with
+  `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`; the anchor is the
+  maximum `(season, episode)` watched, and `lastViewedAt` seeds the real date for the grace periods.
 
 ## Pitfalls
 
-- **El PIN caduca rápido**: no reutilizar un `id` viejo; regenerar si el polling no resuelve.
-- **`viewOffset` durante reproducción vs persistente**: en `/status/sessions` se actualiza en
-  vivo; en `/library/metadata/{id}` solo tras cerrar la sesión. Para detectar "visto" usar el
-  de la sesión.
-- **Relay es lento**: si solo hay conexión relay, el polling y los metadatos van con latencia.
-- **IDs externos a nivel de episodio** no son fiables; basta TVDB de la serie + números de
-  temporada/episodio para correlacionar.
+- **The PIN expires fast**: don't reuse an old `id`; regenerate if the polling doesn't resolve.
+- **`viewOffset` during playback vs persistent**: in `/status/sessions` it updates
+  live; in `/library/metadata/{id}` only after closing the session. To detect "watched" use the
+  session's one.
+- **Relay is slow**: if there's only a relay connection, polling and metadata run with latency.
+- **External IDs at the episode level** are not reliable; the show's TVDB + season/episode
+  numbers is enough to correlate.

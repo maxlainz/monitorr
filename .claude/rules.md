@@ -1,66 +1,66 @@
-# Reglas de código, git y estilo
+# Code, git and style rules
 
-Doc de entrada: leer **antes de cualquier edición**. Para mantener esta y el resto de la
-documentación, ver [`documentation.md`](documentation.md).
+Entry doc: read **before any edit**. To maintain this and the rest of the
+documentation, see [`documentation.md`](documentation.md).
 
 ## Git
 
-- Rama de trabajo: `dev`. Nunca commitear directamente a `main`.
-- Tras cada edición de código → commit en `dev` → `git push` inmediato.
-- Merge a `main` solo si el usuario lo pide explícitamente. El mensaje debe resumir todo
-  lo nuevo desde el anterior commit en `main`.
-- `CLAUDE.md` y `.claude/` **sí** entran a `main` en este repo (no se excluyen en el merge).
-- Commits en español, mensaje corto y descriptivo. Prefijos convencionales (`feat:`,
-  `fix:`, `docs:`, `chore:`, `refactor:`) bienvenidos pero no obligatorios.
+- Working branch: `dev`. Never commit directly to `main`.
+- After each code edit → commit on `dev` → `git push` immediately.
+- Merge to `main` only if the user explicitly asks. The message must summarize everything
+  new since the previous commit on `main`.
+- `CLAUDE.md` and `.claude/` **do** go into `main` in this repo (they are not excluded in the merge).
+- Commits in English, short and descriptive message. Conventional prefixes (`feat:`,
+  `fix:`, `docs:`, `chore:`, `refactor:`) are welcome but not mandatory.
 
-## Idioma
+## Language
 
-- Documentación, comentarios (cuando existan) y mensajes de commit: español.
-- Código, identificadores, nombres de archivos, branches y variables de entorno: inglés.
+- Documentation, comments (when they exist), commit messages and UI: English.
+- Code, identifiers, file names, branches and environment variables: English.
 
-## Estilo de código
+## Code style
 
-- Módulos por dominio (no por capa horizontal).
-- Funciones pequeñas; una función hace una cosa.
-- Imports explícitos. No `import *`.
-- Sin `print()`/`console.log` de depuración en código de producción; usar un logger.
-- Configuración (puertos, paths, intervalos, credenciales) siempre vía env vars o config,
-  nunca hardcoded.
+- Modules by domain (not by horizontal layer).
+- Small functions; one function does one thing.
+- Explicit imports. No `import *`.
+- No debug `print()`/`console.log` in production code; use a logger.
+- Configuration (ports, paths, intervals, credentials) always via env vars or config,
+  never hardcoded.
 
-## Comentarios
+## Comments
 
-- Por defecto, sin comentarios.
-- Solo añadir uno cuando el WHY no es obvio: restricción externa, workaround de un bug
-  concreto, invariante sutil, rate limit no evidente.
-- Nunca explicar el QUÉ — el nombre de la función ya lo dice.
+- By default, no comments.
+- Only add one when the WHY is not obvious: external constraint, workaround for a specific
+  bug, subtle invariant, non-obvious rate limit.
+- Never explain the WHAT — the function name already says it.
 
-## Abstracciones
+## Abstractions
 
-- Sin abstracciones prematuras. Tres líneas similares son preferibles a un helper genérico
-  si no hay reutilización real.
-- No añadir manejo de errores para escenarios imposibles.
-- Validación solo en fronteras del sistema (input de usuario, respuestas de red, payloads externos).
-- Sin feature flags ni shims de retrocompatibilidad mientras no haya usuarios externos.
-  Cambiar el código directamente.
+- No premature abstractions. Three similar lines are preferable to a generic helper
+  if there is no real reuse.
+- Do not add error handling for impossible scenarios.
+- Validation only at system boundaries (user input, network responses, external payloads).
+- No feature flags or backward-compatibility shims while there are no external users.
+  Change the code directly.
 
-## Lenguaje y tipado
+## Language and typing
 
-- **Python 3.12**, pineado en [`pyproject.toml`](../pyproject.toml) (`requires-python`) y en
-  [`.python-version`](../.python-version). Deps con `uv` y lockfile `uv.lock`.
-- **Type hints obligatorios**; mypy en **modo estricto** (config en `pyproject.toml`). El código
-  debe pasar `mypy .` sin errores.
-- **Linter + formatter: Ruff** (config en `pyproject.toml`). Formato de Ruff es la fuente de
-  verdad; no introducir otro formatter.
-- **Validación de I/O en fronteras: Pydantic v2** (y `pydantic-settings` para env vars). Validar
-  payloads externos (Plex, Sonarr, forms) al entrar, no por dentro.
-- Stack completo y *porqué*: [`tech-stack.md`](tech-stack.md).
+- **Python 3.12**, pinned in [`pyproject.toml`](../pyproject.toml) (`requires-python`) and in
+  [`.python-version`](../.python-version). Deps with `uv` and `uv.lock` lockfile.
+- **Type hints mandatory**; mypy in **strict mode** (config in `pyproject.toml`). The code
+  must pass `mypy .` with no errors.
+- **Linter + formatter: Ruff** (config in `pyproject.toml`). Ruff's formatting is the source
+  of truth; do not introduce another formatter.
+- **I/O validation at boundaries: Pydantic v2** (and `pydantic-settings` for env vars). Validate
+  external payloads (Plex, Sonarr, forms) on the way in, not internally.
+- Full stack and *why*: [`tech-stack.md`](tech-stack.md).
 
 ## CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) corre en push a `dev`/`main` y en PRs:
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on push to `dev`/`main` and on PRs:
 
-- **quality**: `ruff check`, `ruff format --check`, `mypy`, `pytest` (instala con `uv sync --frozen`).
-- **image**: construye la imagen multi-arch (`linux/amd64,linux/arm64`) con buildx (sin push).
+- **quality**: `ruff check`, `ruff format --check`, `mypy`, `pytest` (installs with `uv sync --frozen`).
+- **image**: builds the multi-arch image (`linux/amd64,linux/arm64`) with buildx (no push).
 
-Comando único en local antes de pushear (ver [`workflows.md`](workflows.md)):
+Single command locally before pushing (see [`workflows.md`](workflows.md)):
 `uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.

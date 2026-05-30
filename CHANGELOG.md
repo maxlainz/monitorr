@@ -1,31 +1,31 @@
 # Changelog
 
-Todos los cambios notables de monitorr. El formato sigue
-[Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el versionado es
-[SemVer](https://semver.org/lang/es/).
+All notable changes to monitorr. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
+[SemVer](https://semver.org/).
 
 ## [1.0.0] - 2026-05-30
 
-Primera versión pública. monitorr observa el visionado en Plex y gestiona los episodios en
-Sonarr **solo vía API**, manteniendo una ventana deslizante alrededor de lo que ves.
+First public release. monitorr watches viewing in Plex and manages episodes in Sonarr
+**API-only**, keeping a sliding window around what you watch.
 
-### Añadido
+### Added
 
-- **Ventana de episodios** GET (por delante) / KEEP (por detrás) con unidad por episodio o
-  temporada; opción de lanzar la búsqueda en Sonarr para los episodios por delante.
-- **Always-Have**: protección de episodios clave por patrones (`S01E01`, `S*E01`, `S01`, `S*`).
-- **Grace periods**: borrado diferido con barridos periódicos (watched / unwatched / dormant).
-- **Dry-run** como interruptor maestro, activado por defecto.
-- **Detección de visionado** por sondeo de sesiones de Plex y webhook opcional `media.scrobble`,
-  con disparo al ~90% visto y debounce.
-- **Sincronización/reconciliación** periódica del estado visto; auto-normalización a piloto de
-  las series sin visionado.
-- **Login with Plex** (PIN/OAuth), descubrimiento de servidor y correlación Plex↔Sonarr por TVDB.
-- **Cliente de Sonarr** (v3/v4): monitorizar/desmonitorizar, buscar, borrar y gestión de cola.
-- **Web UI** server-rendered (HTMX + Jinja2): estado, series, historial de borrados y ajustes,
-  con config global y overrides por serie.
-- **Persistencia** en SQLite (aiosqlite, WAL) con migraciones por versión de esquema.
-- **Imagen Docker** única multi-arch (amd64/arm64), endpoints `/health` y `/version`, y
-  publicación automatizada en Docker Hub y GHCR mediante tags `vX.Y.Z`.
+- **Episode window** GET (ahead) / KEEP (behind) with unit per episode or season; option to
+  trigger the Sonarr search for the episodes ahead.
+- **Always-Have**: protection of key episodes by patterns (`S01E01`, `S*E01`, `S01`, `S*`).
+- **Grace periods**: deferred deletion with periodic sweeps (watched / unwatched / dormant).
+- **Dry-run** as a master switch, enabled by default.
+- **Viewing detection** via Plex session polling and optional `media.scrobble` webhook, with
+  a trigger at ~90% watched and debounce.
+- **Periodic sync/reconciliation** of the watched state; auto-normalization to pilot of
+  shows with no viewing.
+- **Login with Plex** (PIN/OAuth), server discovery and Plex↔Sonarr correlation via TVDB.
+- **Sonarr client** (v3/v4): monitor/unmonitor, search, delete and queue management.
+- **Server-rendered Web UI** (HTMX + Jinja2): status, series, deletion history and settings,
+  with global config and per-series overrides.
+- **Persistence** in SQLite (aiosqlite, WAL) with migrations by schema version.
+- **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
+  automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
 [1.0.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.0

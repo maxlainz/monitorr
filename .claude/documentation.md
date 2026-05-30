@@ -1,64 +1,64 @@
-# Cómo y cuándo documentar
+# How and when to document
 
-Norma de mantenimiento de la documentación de este repo. **La documentación es parte
-del cambio, no un paso posterior.** Si un cambio invalida un doc, el doc se actualiza
-**en el mismo commit**.
+Maintenance rule for this repo's documentation. **The documentation is part of the
+change, not a later step.** If a change invalidates a doc, the doc is updated
+**in the same commit**.
 
-## Dónde vive qué
+## Where what lives
 
-- **`CLAUDE.md`** (raíz) = portada: intro del proyecto, **Reglas** y la tabla **Contexto**
-  que indexa todos los docs de `.claude/` con un "cuándo leer". No detalle técnico aquí.
-- **`.claude/*.md`** = el detalle, **un archivo por dominio/concern** (no por capa).
-  Ej.: `data-model.md`, `api.md`, `ui-features.md` — nunca `backend.md` / `frontend.md`.
-- **Single source of truth**: cada hecho vive en un solo sitio. No dupliques una regla
-  o un comando en dos docs; enlaza al doc canónico con un enlace relativo.
+- **`CLAUDE.md`** (root) = cover page: project intro, **Rules** and the **Context** table
+  that indexes all the `.claude/` docs with a "when to read". No technical detail here.
+- **`.claude/*.md`** = the detail, **one file per domain/concern** (not per layer).
+  E.g.: `data-model.md`, `api.md`, `ui-features.md` — never `backend.md` / `frontend.md`.
+- **Single source of truth**: each fact lives in a single place. Do not duplicate a rule
+  or a command across two docs; link to the canonical doc with a relative link.
 
-## Cuándo actualizar un doc existente
+## When to update an existing doc
 
-Actualiza el doc afectado **en el mismo commit** que el cambio, ante cualquiera de estos
-disparadores:
+Update the affected doc **in the same commit** as the change, on any of these
+triggers:
 
-- Cambio de arquitectura, componentes o flujo de datos → `architecture.md`.
-- Stack, dependencias o estructura de directorios → `architecture.md` (o `tech-stack.md` si existe).
-- Nuevo comando de desarrollo, build, test o deploy → `workflows.md`.
-- Nueva regla de código, git, estilo o idioma → `rules.md`.
-- Cambio en el esquema de datos o en una ruta/endpoint → el doc de ese dominio (`data-model.md`, `api.md`).
-- Cambio en el flujo de git, releases o CI → `rules.md` / `workflows.md` / `versioning.md`.
+- Change of architecture, components or data flow → `architecture.md`.
+- Stack, dependencies or directory structure → `architecture.md` (or `tech-stack.md` if it exists).
+- New development, build, test or deploy command → `workflows.md`.
+- New code, git, style or language rule → `rules.md`.
+- Change in the data schema or in a route/endpoint → that domain's doc (`data-model.md`, `api.md`).
+- Change in the git flow, releases or CI → `rules.md` / `workflows.md` / `versioning.md`.
 
-## Cuándo crear un doc nuevo (vs. ampliar uno existente)
+## When to create a new doc (vs. expanding an existing one)
 
-Crea un `.claude/<dominio>.md` nuevo cuando **aparece un dominio que aún no existe** y
-empieza a tener reglas, formatos o pitfalls propios. Si solo añades un detalle a un
-dominio ya cubierto, **amplía el doc existente** — no fragmentes.
+Create a new `.claude/<domain>.md` when **a domain appears that doesn't exist yet** and
+starts having its own rules, formats or pitfalls. If you're just adding a detail to a
+domain already covered, **expand the existing doc** — don't fragment.
 
-Menú de ampliación previsto (crear cuando el código lo justifique):
+Planned expansion menu (create when the code justifies it):
 
-| Doc candidato | Crear cuando… |
+| Candidate doc | Create when… |
 |---|---|
-| `tech-stack.md` | Se fija el stack: versiones, layout, decisiones técnicas |
-| `data-model.md` | Aparece persistencia: entidades, esquema, invariantes |
-| `api.md` | Se expone una API: rutas, contratos, auth, formato de respuesta |
-| `ui-features.md` | Hay UI: catálogo de páginas, acciones, qué se configura por web vs env |
-| `versioning.md` | Se cortan releases: SemVer, conventional commits, bump, tags |
-| `<feature>.md` | Una feature tiene lógica/pitfalls suficientes para merecer su propia página |
+| `tech-stack.md` | The stack is fixed: versions, layout, technical decisions |
+| `data-model.md` | Persistence appears: entities, schema, invariants |
+| `api.md` | An API is exposed: routes, contracts, auth, response format |
+| `ui-features.md` | There is a UI: catalog of pages, actions, what is configured via web vs env |
+| `versioning.md` | Releases are cut: SemVer, conventional commits, bump, tags |
+| `<feature>.md` | A feature has enough logic/pitfalls to deserve its own page |
 
-## Al añadir un doc nuevo
+## When adding a new doc
 
-1. Crea el archivo en `.claude/` con el formato de abajo.
-2. **Registra su fila** en la tabla *Contexto* de `CLAUDE.md` con un "cuándo leer" claro.
-3. Si reemplaza contenido que estaba en otro doc, muévelo y deja solo un enlace.
+1. Create the file in `.claude/` with the format below.
+2. **Register its row** in the *Context* table of `CLAUDE.md` with a clear "when to read".
+3. If it replaces content that was in another doc, move it and leave only a link.
 
-## Formato de cada doc
+## Format of each doc
 
-- Título `#` en la primera línea; secciones con `##` por tema.
-- Enlaces entre docs en formato relativo markdown: `` [`x.md`](x.md) `` (y `../` para
-  archivos fuera de `.claude/`, p. ej. `` [`ci.yml`](../.github/workflows/ci.yml) ``).
-- **Explicar el porqué**, no el qué: invariantes, trade-offs, pitfalls, restricciones
-  externas. Evitar narrar lo que el código ya dice.
-- Compacto y directivo. Sin relleno.
+- `#` title on the first line; sections with `##` per topic.
+- Links between docs in relative markdown format: `` [`x.md`](x.md) `` (and `../` for
+  files outside `.claude/`, e.g. `` [`ci.yml`](../.github/workflows/ci.yml) ``).
+- **Explain the why**, not the what: invariants, trade-offs, pitfalls, external
+  constraints. Avoid narrating what the code already says.
+- Compact and directive. No filler.
 
-## Idioma y estilo
+## Language and style
 
-- Documentación y mensajes de commit: **español**.
-- Código, identificadores, nombres de archivo, ramas y env vars: **inglés**.
-- Estilo de doc espejo del de `rules.md`: frases cortas, listas, tablas para índices.
+- Documentation, commit messages and UI: **English**.
+- Code, identifiers, file names, branches and env vars: **English**.
+- Doc style mirrors that of `rules.md`: short sentences, lists, tables for indexes.

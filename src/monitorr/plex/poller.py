@@ -1,8 +1,8 @@
-"""Poller de sesiones (mecanismo de detección principal). Ver .claude/plex.md.
+"""Session poller (primary detection mechanism). See .claude/plex.md.
 
-Bucle asyncio lanzado en el lifespan: consulta /status/sessions cada `interval` s, detecta
-"visto" (viewOffset/duration ≥ threshold, o sesión casi completa que desaparece) con debounce
-por episodio y dispara el motor.
+Asyncio loop launched in the lifespan: queries /status/sessions every `interval` s, detects
+"watched" (viewOffset/duration ≥ threshold, or an almost-complete session that disappears) with
+per-episode debounce and triggers the engine.
 """
 
 import asyncio
@@ -16,14 +16,14 @@ from monitorr.plex.client import get_server, get_sessions, resolve_tvdb_id
 
 logger = logging.getLogger(__name__)
 
-# Clave de debounce. Plex puede mantener el mismo sessionKey al auto-reproducir el siguiente
-# episodio de un binge, así que la identidad del visionado incluye (temporada, episodio).
+# Debounce key. Plex can keep the same sessionKey when auto-playing the next
+# episode of a binge, so the viewing identity includes (season, episode).
 WatchKey = tuple[str, int, int]
 
 
 @dataclass
 class _PrevSession:
-    """Lo mínimo para disparar si una sesión casi completa desaparece entre sondeos."""
+    """The minimum needed to trigger if an almost-complete session disappears between polls."""
 
     grandparent_rating_key: str
     grandparent_title: str
@@ -33,7 +33,7 @@ class _PrevSession:
 
 
 async def process_watch(tvdb_id: int, season: int, episode: int) -> None:
-    """Registra el visionado y recalcula la ventana. Compartido por poller y webhook."""
+    """Records the viewing and recomputes the window. Shared by poller and webhook."""
     await store.record_watch(tvdb_id, season, episode)
     await apply_window(tvdb_id, season, episode)
 
@@ -73,10 +73,10 @@ async def _poll_once(
             continue
         tvdb_id = await _resolve(uri, token, client_id, session.grandparent_rating_key, unresolved)
         if tvdb_id is None:
-            logger.warning("sin tvdb para %s; se omite", session.grandparent_title)
+            logger.warning("no tvdb for %s; skipping", session.grandparent_title)
             continue
         logger.info(
-            "visto S%02dE%02d de %s (tvdb=%s)",
+            "watched S%02dE%02d of %s (tvdb=%s)",
             session.season,
             session.episode,
             session.grandparent_title,
@@ -85,7 +85,7 @@ async def _poll_once(
         await process_watch(tvdb_id, session.season, session.episode)
         fired.add(key)
 
-    # Sesiones casi completas que desaparecen entre sondeos = vistas (ver behavior.md "Disparo").
+    # Almost-complete sessions that disappear between polls = watched (see behavior.md "Trigger").
     for key, snapshot in prev.items():
         if key in current or key in fired:
             continue
@@ -93,10 +93,10 @@ async def _poll_once(
             continue
         tvdb_id = await _resolve(uri, token, client_id, snapshot.grandparent_rating_key, unresolved)
         if tvdb_id is None:
-            logger.warning("sin tvdb para %s; se omite", snapshot.grandparent_title)
+            logger.warning("no tvdb for %s; skipping", snapshot.grandparent_title)
             continue
         logger.info(
-            "completado S%02dE%02d de %s (sesión cerrada, tvdb=%s)",
+            "completed S%02dE%02d of %s (session closed, tvdb=%s)",
             snapshot.season,
             snapshot.episode,
             snapshot.grandparent_title,
@@ -113,7 +113,8 @@ async def _poll_once(
 async def _resolve(
     uri: str, token: str, client_id: str, rating_key: str, unresolved: set[str]
 ) -> int | None:
-    """Resuelve el tvdb del show, evitando reintentar (y re-avisar) los ya conocidos sin tvdb."""
+    """Resolves the show's tvdb, avoiding retrying (and re-warning) those already known
+    without a tvdb."""
     if rating_key in unresolved:
         return None
     tvdb_id = await resolve_tvdb_id(uri, token, client_id, rating_key)
@@ -132,5 +133,5 @@ async def poll_loop(interval: int) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("error en el ciclo de polling de Plex")
+            logger.exception("error in the Plex polling loop")
         await asyncio.sleep(interval)

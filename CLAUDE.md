@@ -1,43 +1,42 @@
 # monitorr
 
-monitorr es un servicio (pensado para Docker) que observa qué series se están viendo en Plex
-y, vía API de Sonarr, mantiene monitorizados/descargados *N* episodios **por delante** del
-punto de visionado y conserva solo *N* **por detrás** (borrando el resto del disco a través de
-Sonarr), protegiendo episodios clave como el piloto. Todo **solo vía API**, sin acceso al
-disco de media. Es una alternativa enfocada a [episeerr](.claude/episeerr.md).
+monitorr is a service (designed for Docker) that watches which shows are being viewed in Plex
+and, via the Sonarr API, keeps *N* episodes **ahead** of the viewing point
+monitored/downloaded and keeps only *N* **behind** (deleting the rest from disk through
+Sonarr), protecting key episodes such as the pilot. Everything **API-only**, with no access to
+the media disk.
 
-**Stack**: Python 3.12 · FastAPI · HTMX · SQLite · Docker single-image multi-arch (Web UI en
-`:8080`). Detalle en [`.claude/tech-stack.md`](.claude/tech-stack.md). La lógica de
-Plex/Sonarr/ventana está implementada y testeada; v1.0.0 publicada en Docker Hub y GHCR.
+**Stack**: Python 3.12 · FastAPI · HTMX · SQLite · Docker single-image multi-arch (Web UI on
+`:8080`). Details in [`.claude/tech-stack.md`](.claude/tech-stack.md). The Plex/Sonarr/window
+logic is implemented and tested; v1.0.0 published on Docker Hub and GHCR.
 
-> Antes de desarrollar, lee [`.claude/documentation.md`](.claude/documentation.md) para saber
-> **cómo y cuándo** mantener esta documentación.
+> Before developing, read [`.claude/documentation.md`](.claude/documentation.md) to learn
+> **how and when** to maintain this documentation.
 
-## Reglas
+## Rules
 
-- Desarrollo siempre en rama `dev`; merge a `main` solo cuando se pida explícitamente.
-- Tras cada edición de código → commit en `dev` → `git push` inmediato.
-- Al mergear a `main`, el mensaje debe resumir todo lo nuevo desde el último commit en `main`.
-- `CLAUDE.md` y `.claude/` **sí** viajan a `main` (no excluir en el merge).
-- Actualizar los docs de `.claude/` tras cualquier cambio mayor en arquitectura, comandos
-  o reglas — **en el mismo commit** que el cambio. Cómo y cuándo: [`.claude/documentation.md`](.claude/documentation.md).
-- Idioma de docs y commits: español. Identificadores, nombres de variables, ramas y código en inglés.
+- Always develop on the `dev` branch; merge to `main` only when explicitly requested.
+- After each code edit → commit on `dev` → `git push` immediately.
+- When merging to `main`, the message must summarize everything new since the last commit on `main`.
+- `CLAUDE.md` and `.claude/` **do** travel to `main` (do not exclude them in the merge).
+- Update the `.claude/` docs after any major change to architecture, commands or rules —
+  **in the same commit** as the change. How and when: [`.claude/documentation.md`](.claude/documentation.md).
+- Language of docs, comments, commits and UI: English. Identifiers, variable names, branches and code in English.
 
-## Contexto (leer según tarea)
+## Context (read as needed per task)
 
-| Archivo | Cuándo leer |
+| File | When to read |
 |---|---|
-| [`.claude/rules.md`](.claude/rules.md) | Antes de cualquier edición — git, idioma, estilo, comentarios, abstracciones |
-| [`.claude/documentation.md`](.claude/documentation.md) | Antes de tocar la documentación — cómo y cuándo actualizarla, cuándo crear un doc nuevo |
-| [`.claude/architecture.md`](.claude/architecture.md) | Stack, componentes, flujo de datos, decisiones técnicas y pendientes |
-| [`.claude/tech-stack.md`](.claude/tech-stack.md) | Versiones, layout de directorios, dependencias y decisiones del stack |
-| [`.claude/workflows.md`](.claude/workflows.md) | Comandos de desarrollo, build/test/lint, deploy, env vars, merge a `main` |
-| [`.claude/behavior.md`](.claude/behavior.md) | Lógica central: ventana de episodios (GET/KEEP), Always-Have, grace periods, dry-run, override |
-| [`.claude/plex.md`](.claude/plex.md) | Integración Plex: Login with Plex (PIN/OAuth), descubrimiento de servidor, polling/webhook, correlación TVDB |
-| [`.claude/sonarr.md`](.claude/sonarr.md) | Integración Sonarr: monitorizar/buscar/borrar episodios vía API |
-| [`.claude/tautulli.md`](.claude/tautulli.md) | Fuente alternativa/futura de watch status (no en v1) |
-| [`.claude/episeerr.md`](.claude/episeerr.md) | Prior art: qué hace episeerr en lo relevante y qué conserva/mejora monitorr |
+| [`.claude/rules.md`](.claude/rules.md) | Before any edit — git, language, style, comments, abstractions |
+| [`.claude/documentation.md`](.claude/documentation.md) | Before touching the documentation — how and when to update it, when to create a new doc |
+| [`.claude/architecture.md`](.claude/architecture.md) | Stack, components, data flow, technical decisions and pending items |
+| [`.claude/tech-stack.md`](.claude/tech-stack.md) | Versions, directory layout, dependencies and stack decisions |
+| [`.claude/workflows.md`](.claude/workflows.md) | Development commands, build/test/lint, deploy, env vars, merge to `main` |
+| [`.claude/behavior.md`](.claude/behavior.md) | Core logic: episode window (GET/KEEP), Always-Have, grace periods, dry-run, override |
+| [`.claude/plex.md`](.claude/plex.md) | Plex integration: Login with Plex (PIN/OAuth), server discovery, polling/webhook, TVDB correlation |
+| [`.claude/sonarr.md`](.claude/sonarr.md) | Sonarr integration: monitor/search/delete episodes via API |
+| [`.claude/tautulli.md`](.claude/tautulli.md) | Alternative/future source of watch status (not in v1) |
 
-> Este es un esqueleto inicial. A medida que el código crezca, **amplía** `.claude/`
-> con docs por dominio (DB, API, UI, etc.) siguiendo las normas de
-> [`.claude/documentation.md`](.claude/documentation.md) y añade su fila a esta tabla.
+> This is an initial skeleton. As the code grows, **expand** `.claude/`
+> with per-domain docs (DB, API, UI, etc.) following the rules in
+> [`.claude/documentation.md`](.claude/documentation.md) and add its row to this table.

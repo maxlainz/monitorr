@@ -31,7 +31,7 @@ async def test_normalize_dry_run_previews_delete_without_calls() -> None:
 
     assert not monitor.called
     assert not delete.called
-    # El descargado no-piloto (E2) queda como pendiente de borrado.
+    # The downloaded non-pilot (E2) is left as pending deletion.
     pending = await store.list_deletions(dry_run=True)
     assert {(d.season, d.episode) for d in pending} == {(1, 2)}
 
@@ -46,9 +46,9 @@ async def test_normalize_real_deletes_downloaded_and_monitors_pilot() -> None:
 
     await actions.normalize_to_pilot("http://sonarr:8989", "key", TVDB, SERIES, EPISODES, [], False)
 
-    assert delete.call_count == 1  # E2 (descargado, no piloto) se borra
-    assert command.called  # piloto sin fichero → búsqueda
-    assert monitor.call_count == 2  # desmonitorizar E2 (en el borrado) + monitorizar piloto
+    assert delete.call_count == 1  # E2 (downloaded, non-pilot) is deleted
+    assert command.called  # pilot without file → search
+    assert monitor.call_count == 2  # unmonitor E2 (in the deletion) + monitor pilot
 
 
 @respx.mock
@@ -60,7 +60,7 @@ async def test_normalize_keeps_always_have_file() -> None:
     respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
     respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
 
-    # E2 protegido por Always-Have: se desmonitoriza pero NO se borra.
+    # E2 protected by Always-Have: it's unmonitored but NOT deleted.
     await actions.normalize_to_pilot(
         "http://sonarr:8989", "key", TVDB, SERIES, EPISODES, ["S01E02"], False
     )
@@ -107,10 +107,10 @@ async def test_cancel_downloads_removes_from_queue_keeping_seed() -> None:
 
     await actions.cancel_downloads("http://sonarr:8989", "key", [102], dry_run=False)
 
-    assert delete.call_count == 1  # solo el ítem del episodio 102 (id 5)
+    assert delete.call_count == 1  # only the item for episode 102 (id 5)
     url = str(delete.calls[0].request.url)
     assert "/queue/5" in url
-    assert "removeFromClient=false" in url  # se deja sembrando
+    assert "removeFromClient=false" in url  # left seeding
 
 
 @respx.mock

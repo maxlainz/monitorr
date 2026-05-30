@@ -1,7 +1,7 @@
-"""Escrituras a Sonarr guardadas por dry-run. Compartido por window.py, grace.py y sync.py.
+"""Writes to Sonarr guarded by dry-run. Shared by window.py, grace.py and sync.py.
 
-Con `dry_run=True` no se llama a Sonarr: solo se registra/loguea la intención. El borrado
-además queda en `deletion_log` (dry_run=1) para la lista de pendientes de la UI.
+With `dry_run=True` Sonarr is not called: the intent is only recorded/logged. The deletion
+also stays in `deletion_log` (dry_run=1) for the UI's pending list.
 """
 
 import logging
@@ -20,7 +20,7 @@ async def monitor_episodes(
     if not episode_ids:
         return
     if dry_run:
-        logger.info("[dry-run] monitorizaría %d episodios", len(episode_ids))
+        logger.info("[dry-run] would monitor %d episodes", len(episode_ids))
         return
     await sonarr.set_monitored(base_url, api_key, episode_ids, True)
 
@@ -28,14 +28,14 @@ async def monitor_episodes(
 async def set_seasons_monitored(
     base_url: str, api_key: str, series_id: int, desired: dict[int, bool], dry_run: bool
 ) -> None:
-    """Impone el monitorizado a nivel temporada para que monitorr sea autoridad también ahí
-    (los episodios nuevos heredan el flag de su temporada). Guardado por dry-run."""
+    """Enforces season-level monitoring so monitorr is the authority there too
+    (new episodes inherit their season's flag). Guarded by dry-run."""
     if not desired:
         return
     if dry_run:
         on = sorted(n for n, m in desired.items() if m)
         off = sorted(n for n, m in desired.items() if not m)
-        logger.info("[dry-run] fijaría temporadas monitorizadas on=%s off=%s", on, off)
+        logger.info("[dry-run] would set monitored seasons on=%s off=%s", on, off)
         return
     await sonarr.set_seasons_monitored(base_url, api_key, series_id, desired)
 
@@ -43,12 +43,12 @@ async def set_seasons_monitored(
 async def unmonitor_episodes(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:
-    """Desmonitoriza episodios sin fichero que caen fuera de la ventana GET (no hay nada que
-    borrar, solo evitar que Sonarr los descargue). Guardado por dry-run."""
+    """Unmonitors fileless episodes that fall outside the GET window (there's nothing to
+    delete, just preventing Sonarr from downloading them). Guarded by dry-run."""
     if not episode_ids:
         return
     if dry_run:
-        logger.info("[dry-run] desmonitorizaría %d episodios", len(episode_ids))
+        logger.info("[dry-run] would unmonitor %d episodes", len(episode_ids))
         return
     await sonarr.set_monitored(base_url, api_key, episode_ids, False)
 
@@ -59,7 +59,7 @@ async def search_episodes(
     if not episode_ids:
         return
     if dry_run:
-        logger.info("[dry-run] buscaría %d episodios", len(episode_ids))
+        logger.info("[dry-run] would search %d episodes", len(episode_ids))
         return
     await sonarr.search_episodes(base_url, api_key, episode_ids)
 
@@ -67,12 +67,12 @@ async def search_episodes(
 async def cancel_downloads(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:
-    """Saca de la cola de Sonarr las descargas en curso de estos episodios (no se importan).
-    El torrent se queda en el cliente sembrando hasta su ratio. Guardado por dry-run."""
+    """Pulls these episodes' in-progress downloads from Sonarr's queue (so they aren't imported).
+    The torrent stays in the client seeding until its ratio. Guarded by dry-run."""
     if not episode_ids:
         return
     if dry_run:
-        logger.info("[dry-run] cancelaría descargas en cola de %d episodios", len(episode_ids))
+        logger.info("[dry-run] would cancel queued downloads of %d episodes", len(episode_ids))
         return
     wanted = set(episode_ids)
     for item in await sonarr.get_queue(base_url, api_key):
@@ -80,9 +80,7 @@ async def cancel_downloads(
             await sonarr.delete_queue_item(
                 base_url, api_key, item.id, remove_from_client=False, blocklist=False
             )
-            logger.info(
-                "descarga en cola cancelada (episodeId=%s); sigue sembrando", item.episode_id
-            )
+            logger.info("queued download cancelled (episodeId=%s); still seeding", item.episode_id)
 
 
 async def normalize_to_pilot(
@@ -94,17 +92,17 @@ async def normalize_to_pilot(
     always_have: list[str],
     dry_run: bool,
 ) -> None:
-    """Deja monitorizado solo el piloto (S01E01). Los episodios ya descargados que se
-    desmonitorizan se **borran** (salvo Always-Have); el piloto se busca si le falta fichero."""
-    # Temporadas a off primero (orden a prueba de cascada): así Sonarr no re-monitoriza por
-    # temporada los episodios que va descubriendo; el piloto se re-monitoriza al final.
+    """Leaves only the pilot (S01E01) monitored. Already-downloaded episodes that get
+    unmonitored are **deleted** (except Always-Have); the pilot is searched if it lacks a file."""
+    # Seasons to off first (cascade-proof order): this way Sonarr doesn't re-monitor by
+    # season the episodes it discovers; the pilot is re-monitored at the end.
     await set_seasons_monitored(
         base_url, api_key, series.id, {s.season_number: False for s in series.seasons}, dry_run
     )
     pilot = next((e for e in episodes if e.season_number == 1 and e.episode_number == 1), None)
     pilot_id = pilot.id if pilot else None
 
-    # Descargados (no piloto, no protegidos) que dejan de monitorizarse → se borran.
+    # Downloaded (not pilot, not protected) that stop being monitored → deleted.
     to_delete = [
         e
         for e in episodes
@@ -121,11 +119,11 @@ async def normalize_to_pilot(
     if not dry_run and to_unmonitor:
         await sonarr.set_monitored(base_url, api_key, to_unmonitor, False)
 
-    # Los desmonitorizados que aún se estén descargando: sacarlos de la cola (no importarlos).
+    # The unmonitored ones still downloading: pull them from the queue (don't import them).
     await cancel_downloads(base_url, api_key, to_unmonitor, dry_run)
 
     if dry_run:
-        logger.info("[dry-run] dejaría solo el piloto monitorizado en %s", series.title)
+        logger.info("[dry-run] would leave only the pilot monitored in %s", series.title)
         return
 
     if pilot is not None:
@@ -153,7 +151,7 @@ async def delete_episode(
             True,
         )
         logger.info(
-            "[dry-run] borraría S%02dE%02d (%s)",
+            "[dry-run] would delete S%02dE%02d (%s)",
             episode.season_number,
             episode.episode_number,
             reason,
@@ -172,4 +170,4 @@ async def delete_episode(
         reason,
         False,
     )
-    logger.info("borrado S%02dE%02d (%s)", episode.season_number, episode.episode_number, reason)
+    logger.info("deleted S%02dE%02d (%s)", episode.season_number, episode.episode_number, reason)

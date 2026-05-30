@@ -41,7 +41,7 @@ router = APIRouter()
 _PIN_ID = "plex_pin_id"
 _PIN_CODE = "plex_pin_code"
 
-# Mantener referencia a las tareas de fondo lanzadas desde rutas para que no las recoja el GC.
+# Keep a reference to background tasks launched from routes so the GC doesn't collect them.
 _bg_tasks: set[asyncio.Task[dict[str, int]]] = set()
 
 
@@ -64,7 +64,7 @@ async def _store_server(server: PlexServer) -> bool:
     return True
 
 
-# --- páginas ---
+# --- pages ---
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -121,7 +121,7 @@ async def deletions_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "deletions.html", context)
 
 
-# --- ajustes: Sonarr ---
+# --- settings: Sonarr ---
 
 
 @router.post("/settings/sonarr")
@@ -141,7 +141,7 @@ async def test_sonarr(
     return templates.TemplateResponse(request, "_sonarr_test.html", {"version": version})
 
 
-# --- ajustes: política ---
+# --- settings: policy ---
 
 
 @router.post("/settings/policy")
@@ -186,7 +186,7 @@ async def save_policy(
     return RedirectResponse(url="/settings", status_code=303)
 
 
-# --- vinculación Plex ---
+# --- Plex linking ---
 
 
 @router.post("/plex/link", response_class=HTMLResponse)
@@ -211,7 +211,7 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
     code = await store.get_setting(_PIN_CODE)
     if not (client_id and pin_id and code):
         return templates.TemplateResponse(
-            request, "_plex_link.html", {"state": "error", "message": "Reinicia la vinculación."}
+            request, "_plex_link.html", {"state": "error", "message": "Restart the linking."}
         )
 
     token = await plex_auth.poll_pin(int(pin_id), code, client_id)
@@ -227,7 +227,7 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
             "_plex_link.html",
-            {"state": "error", "message": "No se encontraron servidores Plex."},
+            {"state": "error", "message": "No Plex servers found."},
         )
     if len(servers) == 1 and await _store_server(servers[0]):
         return templates.TemplateResponse(
@@ -262,7 +262,7 @@ async def plex_unlink() -> RedirectResponse:
     return RedirectResponse(url="/settings", status_code=303)
 
 
-# --- override por serie ---
+# --- per-series override ---
 
 
 @router.post("/series/{tvdb_id}/override")
@@ -271,7 +271,7 @@ async def series_override(tvdb_id: int, enabled: str | None = Form(None)) -> Red
     return RedirectResponse(url="/series", status_code=303)
 
 
-# --- sincronización ---
+# --- sync ---
 
 
 @router.post("/sync")
@@ -283,7 +283,7 @@ async def trigger_sync() -> RedirectResponse:
     return RedirectResponse(url="/", status_code=303)
 
 
-# --- webhook opcional ---
+# --- optional webhook ---
 
 
 @router.post("/webhook/plex/{secret}")
@@ -309,13 +309,13 @@ async def plex_webhook(secret: str, request: Request) -> dict[str, str]:
     client_id = await store.get_setting(constants.PLEX_CLIENT_ID)
     if not (server and token and client_id):
         return {"status": "unlinked"}
-    # Devolvemos siempre 200 para que Plex no reintente ante un error puntual de Sonarr/Plex.
+    # Always return 200 so Plex doesn't retry on a one-off Sonarr/Plex error.
     try:
         tvdb_id = await resolve_tvdb_id(server, token, client_id, event.grandparent_rating_key)
         if tvdb_id is None:
             return {"status": "no-tvdb"}
         await process_watch(tvdb_id, event.season, event.episode)
     except Exception:
-        logger.exception("error procesando webhook de %s", event.grandparent_rating_key)
+        logger.exception("error processing webhook for %s", event.grandparent_rating_key)
         return {"status": "error"}
     return {"status": "ok"}

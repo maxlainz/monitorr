@@ -1,4 +1,4 @@
-"""Política de la ventana y resolución global + override. Ver .claude/behavior.md."""
+"""Window policy and global + override resolution. See .claude/behavior.md."""
 
 import json
 import re
@@ -12,7 +12,7 @@ Unit = Literal["episodes", "seasons"]
 
 
 class Policy(BaseModel):
-    """Parte de la configuración que se puede sobrescribir por serie."""
+    """Part of the configuration that can be overridden per series."""
 
     get_count: int = Field(default=1, ge=0)
     get_unit: Unit = "episodes"
@@ -38,7 +38,7 @@ async def set_global_policy(policy: Policy) -> None:
 
 
 async def effective_policy(tvdb_id: int) -> tuple[Policy, bool]:
-    """Devuelve (política efectiva, habilitada). El override sustituye campos del global."""
+    """Returns (effective policy, enabled). The override replaces fields of the global one."""
     base = await get_global_policy()
     override = await store.get_override(tvdb_id)
     if override is None:
@@ -57,7 +57,7 @@ async def get_dry_run() -> bool:
 
 async def set_dry_run(value: bool) -> None:
     await store.set_setting(constants.DRY_RUN, "1" if value else "0")
-    # Al confiar en el modo real, los previews pendientes dejan de tener sentido.
+    # Once trusting the real mode, the pending previews no longer make sense.
     if not value:
         await store.clear_pending_deletions()
 
@@ -79,7 +79,7 @@ _PATTERN = re.compile(r"^S(?P<season>\d+|\*)(?:E(?P<episode>\d+|\*))?$", re.IGNO
 
 
 def matches_always_have(patterns: list[str], season: int, episode: int) -> bool:
-    """Soporta `S01E01`, `S*E01`, `S01` (temporada entera) y `S*` (toda la serie)."""
+    """Supports `S01E01`, `S*E01`, `S01` (whole season) and `S*` (whole show)."""
     for pattern in patterns:
         match = _PATTERN.match(pattern.strip())
         if match is None:

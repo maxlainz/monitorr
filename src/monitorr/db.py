@@ -2,9 +2,9 @@ from pathlib import Path
 
 import aiosqlite
 
-# Migraciones idempotentes ordenadas. El índice + 1 es la versión de esquema (PRAGMA
-# user_version); al arrancar se aplican solo las pendientes. Añadir nuevas al final, nunca
-# editar las ya publicadas.
+# Ordered idempotent migrations. The index + 1 is the schema version (PRAGMA
+# user_version); on startup only the pending ones are applied. Add new ones at the end, never
+# edit the already-published ones.
 MIGRATIONS: list[str] = [
     """
     CREATE TABLE setting (
@@ -41,8 +41,8 @@ MIGRATIONS: list[str] = [
         created_at      TEXT NOT NULL
     );
     """,
-    # Deduplica los previews (dry_run=1) a una fila por episodio: borra los antiguos y crea un
-    # índice único parcial. El historial de borrados reales (dry_run=0) sigue siendo append-only.
+    # Deduplicate previews (dry_run=1) to one row per episode: delete the old rows and
+    # create a partial unique index. Real deletions (dry_run=0) stay append-only.
     """
     DELETE FROM deletion_log WHERE dry_run = 1 AND id NOT IN (
         SELECT MAX(id) FROM deletion_log WHERE dry_run = 1

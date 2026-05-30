@@ -1,125 +1,125 @@
 # Workflows
 
-> Mantener actualizado según [`documentation.md`](documentation.md): cualquier comando nuevo
-> se documenta aquí.
+> Keep up to date per [`documentation.md`](documentation.md): any new command
+> is documented here.
 
-## Ramas y trabajo diario
+## Branches and daily work
 
-- **`dev`**: rama de trabajo. **Todo el desarrollo ocurre aquí.** Nunca se commitea
-  directamente a `main`.
-- **`main`**: rama estable/publicada. Solo recibe merges explícitos desde `dev`
-  (ver [Merge a `main`](#merge-a-main)).
+- **`dev`**: working branch. **All development happens here.** Never commit
+  directly to `main`.
+- **`main`**: stable/published branch. It only receives explicit merges from `dev`
+  (see [Merge to `main`](#merge-to-main)).
 
-Ciclo de trabajo en `dev` (tras cada cambio):
+Work cycle on `dev` (after each change):
 
 ```bash
-git checkout dev            # asegurarse de estar en dev antes de editar
-# … editar código y docs …
+git checkout dev            # make sure you're on dev before editing
+# … edit code and docs …
 git add -A
-git commit -m "mensaje en español"
-git push                   # push inmediato tras cada commit
+git commit -m "message in English"
+git push                   # immediate push after each commit
 ```
 
-Antes de empezar a editar, comprobar siempre la rama actual con `git status`; si no
-estás en `dev`, cambia con `git checkout dev`.
+Before starting to edit, always check the current branch with `git status`; if you're
+not on `dev`, switch with `git checkout dev`.
 
-## Comandos de desarrollo
+## Development commands
 
 ```bash
-uv sync                    # crea/actualiza .venv desde uv.lock
-uv run monitorr            # arranca la app (Web UI en http://localhost:8080)
+uv sync                    # creates/updates .venv from uv.lock
+uv run monitorr            # starts the app (Web UI at http://localhost:8080)
 ```
 
-Por defecto la BD se crea en `/config`; en local exporta `MONITORR_CONFIG_DIR=./config` para
-no necesitar permisos en `/config`.
+By default the DB is created in `/config`; locally export `MONITORR_CONFIG_DIR=./config` to
+avoid needing permissions on `/config`.
 
 ## Build / test / lint
 
 ```bash
 uv run ruff check .            # lint
-uv run ruff format .           # formatear (o --check para validar sin tocar)
-uv run mypy .                  # type checking estricto
+uv run ruff format .           # format (or --check to validate without touching)
+uv run mypy .                  # strict type checking
 uv run pytest                  # tests
 ```
 
-Comando único pre-push (lo mismo que corre CI):
+Single pre-push command (the same one CI runs):
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest
 ```
 
-Imagen Docker:
+Docker image:
 
 ```bash
-docker build -t monitorr .                                          # build local (arch actual)
+docker build -t monitorr .                                          # local build (current arch)
 docker buildx build --platform linux/amd64,linux/arm64 -t monitorr . # multi-arch
 ```
 
-La publicación de imágenes es automática por tag (ver [Publicación y release](#publicación-y-release)).
+Image publishing is automatic by tag (see [Publishing and release](#publishing-and-release)).
 
 ## Deploy
 
-Imagen única en Docker. Ejemplo en [`docker-compose.yml`](../docker-compose.yml): mapea
-`8080:8080` y monta un volumen en `/config` (SQLite + identidad de cliente Plex).
+Single image in Docker. Example in [`docker-compose.yml`](../docker-compose.yml): maps
+`8080:8080` and mounts a volume on `/config` (SQLite + Plex client identity).
 
 ```bash
 docker compose up -d
 ```
 
-## Variables de entorno
+## Environment variables
 
-Solo infraestructura; la config de la app (Sonarr, ventana, grace, overrides) vive en SQLite y
-se edita por la Web UI. Definidas en [`config.py`](../src/monitorr/config.py).
+Infrastructure only; the app config (Sonarr, window, grace, overrides) lives in SQLite and
+is edited via the Web UI. Defined in [`config.py`](../src/monitorr/config.py).
 
-| Var | Propósito | Default | Obligatoria |
+| Var | Purpose | Default | Required |
 |---|---|---|---|
-| `MONITORR_CONFIG_DIR` | Dir de datos (SQLite, identidad cliente) | `/config` | no |
-| `MONITORR_PORT` | Puerto de escucha | `8080` | no |
-| `MONITORR_LOG_LEVEL` | Nivel de log | `INFO` | no |
-| `MONITORR_PLEX_POLL_INTERVAL` | Segundos entre polls de sesiones | `30` | no |
-| `MONITORR_GRACE_SWEEP_INTERVAL` | Segundos entre barridos de grace periods | `3600` | no |
-| `MONITORR_SYNC_INTERVAL` | Segundos entre sincronizaciones del estado visto (`0` desactiva) | `21600` | no |
-| `MONITORR_SYNC_ON_STARTUP` | Sincronizar una vez al arrancar si nunca se hizo | `true` | no |
-| `MONITORR_WEBHOOK_SECRET` | Token del endpoint webhook opcional | (vacío) | no |
-| `TZ` | Zona horaria (grace periods) | `UTC` | no |
+| `MONITORR_CONFIG_DIR` | Data dir (SQLite, client identity) | `/config` | no |
+| `MONITORR_PORT` | Listening port | `8080` | no |
+| `MONITORR_LOG_LEVEL` | Log level | `INFO` | no |
+| `MONITORR_PLEX_POLL_INTERVAL` | Seconds between session polls | `30` | no |
+| `MONITORR_GRACE_SWEEP_INTERVAL` | Seconds between grace-period sweeps | `3600` | no |
+| `MONITORR_SYNC_INTERVAL` | Seconds between watched-state syncs (`0` disables) | `21600` | no |
+| `MONITORR_SYNC_ON_STARTUP` | Sync once on startup if it never ran | `true` | no |
+| `MONITORR_WEBHOOK_SECRET` | Token for the optional webhook endpoint | (empty) | no |
+| `TZ` | Time zone (grace periods) | `UTC` | no |
 
-## Merge a `main`
+## Merge to `main`
 
-`main` solo recibe merges explícitos. `CLAUDE.md` y `.claude/` **viajan a `main`** (no se
-excluyen). El mensaje del merge resume todo lo nuevo desde el anterior commit en `main`.
+`main` only receives explicit merges. `CLAUDE.md` and `.claude/` **travel to `main`** (they are
+not excluded). The merge message summarizes everything new since the previous commit on `main`.
 
 ```bash
 git checkout main
 git merge dev --no-ff
-# editar el mensaje para resumir todo lo nuevo desde el último commit en main
+# edit the message to summarize everything new since the last commit on main
 git push
 git checkout dev
 ```
 
-## Publicación y release
+## Publishing and release
 
-La imagen se publica **automáticamente al pushear un tag semver `vX.Y.Z`** mediante
+The image is published **automatically when pushing a semver tag `vX.Y.Z`** via
 [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
-- Build multi-arch (`linux/amd64,linux/arm64`) y push a **Docker Hub** (`maxlainz/monitorr`) y
-  **GHCR** (`ghcr.io/maxlainz/monitorr`) con tags `:X.Y.Z`, `:X.Y`, `:X` y `:latest`.
-- Inyecta `VERSION`/`VCS_REF`/`BUILD_DATE` como build-args (labels OCI + endpoint `/version`).
-- **Guard de versión**: el workflow falla si el tag no coincide con `version` de `pyproject.toml`.
-- Crea el **GitHub Release** con las notas de la sección correspondiente de
+- Multi-arch build (`linux/amd64,linux/arm64`) and push to **Docker Hub** (`maxlainz/monitorr`) and
+  **GHCR** (`ghcr.io/maxlainz/monitorr`) with tags `:X.Y.Z`, `:X.Y`, `:X` and `:latest`.
+- Injects `VERSION`/`VCS_REF`/`BUILD_DATE` as build-args (OCI labels + `/version` endpoint).
+- **Version guard**: the workflow fails if the tag doesn't match the `version` in `pyproject.toml`.
+- Creates the **GitHub Release** with the notes from the corresponding section of
   [`CHANGELOG.md`](../CHANGELOG.md).
 
-Pasos para una release:
+Steps for a release:
 
 ```bash
-# 1) en dev: subir la versión y el changelog
+# 1) on dev: bump the version and the changelog
 #    - pyproject.toml  → version = "X.Y.Z"
-#    - CHANGELOG.md     → nueva sección [X.Y.Z]
+#    - CHANGELOG.md     → new section [X.Y.Z]
 git commit -am "chore: release vX.Y.Z" && git push
-# 2) merge a main (ver arriba)
-# 3) tag desde main → dispara la publicación
+# 2) merge to main (see above)
+# 3) tag from main → triggers the publishing
 git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-**Secrets requeridos** (GitHub → Settings → Secrets and variables → Actions): `DOCKERHUB_USERNAME`
-y `DOCKERHUB_TOKEN` (Access Token de Docker Hub). GHCR usa el `GITHUB_TOKEN` automático. Tras el
-primer push a GHCR, marca el package como **público** y enlázalo al repo.
+**Required secrets** (GitHub → Settings → Secrets and variables → Actions): `DOCKERHUB_USERNAME`
+and `DOCKERHUB_TOKEN` (Docker Hub Access Token). GHCR uses the automatic `GITHUB_TOKEN`. After the
+first push to GHCR, mark the package as **public** and link it to the repo.

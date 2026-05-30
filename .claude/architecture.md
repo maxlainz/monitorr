@@ -1,77 +1,77 @@
-# Arquitectura
+# Architecture
 
-> Stack fijado (ver [`tech-stack.md`](tech-stack.md)). Existe un esqueleto runnable; la lógica
-> de Plex/Sonarr/ventana está como contrato (firmas + TODO). Mantener actualizado según
+> Fixed stack (see [`tech-stack.md`](tech-stack.md)). A runnable skeleton exists; the
+> Plex/Sonarr/window logic is in place as a contract (signatures + TODO). Keep it up to date per
 > [`documentation.md`](documentation.md).
 
-## Propósito
+## Purpose
 
-monitorr observa qué series se están viendo en Plex y, vía API de Sonarr, mantiene
-monitorizados/descargados *N* episodios **por delante** del punto de visionado y conserva
-solo *N* **por detrás** (borrando el resto del disco a través de Sonarr), protegiendo
-episodios clave (p.ej. el piloto). Todo **solo vía API**, sin acceso al disco de media.
+monitorr watches which shows are being viewed in Plex and, via the Sonarr API, keeps
+*N* episodes **ahead** of the viewing point monitored/downloaded and keeps only *N*
+**behind** (deleting the rest from disk through Sonarr), protecting key episodes (e.g. the
+pilot). Everything **API-only**, with no access to the media disk.
 
 ## Stack
 
 Python 3.12 · FastAPI + Uvicorn · HTMX + Jinja2 (server-rendered) · SQLite (aiosqlite) ·
-Docker single-image multi-arch (amd64/arm64). Un único proceso ASGI sirve API + Web UI en
-`:8080` y arranca los pollers como tareas `asyncio` en el `lifespan`. Versiones, layout y el
-*porqué* de cada elección en [`tech-stack.md`](tech-stack.md).
+Docker single-image multi-arch (amd64/arm64). A single ASGI process serves API + Web UI on
+`:8080` and starts the pollers as `asyncio` tasks in the `lifespan`. Versions, layout and the
+*why* of each choice in [`tech-stack.md`](tech-stack.md).
 
-## Componentes
+## Components
 
-Organizados por dominio (no por capa):
+Organized by domain (not by layer):
 
-- **Vinculación/auth (Plex)** — "Login with Plex" (flujo PIN/OAuth), descubrimiento del
-  servidor y persistencia del token e identidad de cliente. Ver [`plex.md`](plex.md).
-- **Detector de visionado** — polling de `/status/sessions` (principal) con debounce, y
-  webhook `media.scrobble` (opcional). Emite el evento "serie vista hasta el episodio E".
-- **Sincronización/reconciliación** — escanea la biblioteca de Plex y aplica la ventana al último
-  visto de cada serie (botón, al arrancar, periódica). Cubre series ya empezadas, marcados a mano
-  y visionados offline. Ver [`behavior.md`](behavior.md).
-- **Motor de ventana** — aplica GET / KEEP / Always-Have / grace; "forzar a Pilot" (opt-in). Todas
-  las escrituras a Sonarr pasan por `engine/actions.py`, guardadas por dry-run. Ver [`behavior.md`](behavior.md).
-- **Cliente Sonarr** — monitorizar/desmonitorizar, lanzar búsquedas y borrar ficheros. Ver
+- **Linking/auth (Plex)** — "Login with Plex" (PIN/OAuth flow), server discovery and
+  persistence of the token and client identity. See [`plex.md`](plex.md).
+- **Viewing detector** — polling of `/status/sessions` (primary) with debounce, and
+  `media.scrobble` webhook (optional). Emits the "show watched up to episode E" event.
+- **Sync/reconciliation** — scans the Plex library and applies the window to the last
+  watched of each show (button, on startup, periodic). Covers shows already started, manual marks
+  and offline viewing. See [`behavior.md`](behavior.md).
+- **Window engine** — applies GET / KEEP / Always-Have / grace; "force to Pilot" (opt-in). All
+  writes to Sonarr go through `engine/actions.py`, guarded by dry-run. See [`behavior.md`](behavior.md).
+- **Sonarr client** — monitor/unmonitor, trigger searches and delete files. See
   [`sonarr.md`](sonarr.md).
-- **Estado/persistencia** — tokens (cuenta + servidor), identidad de cliente, y estado por
-  serie/episodio para los grace periods y el debounce.
-- **Configuración** — política global + overrides por serie.
+- **State/persistence** — tokens (account + server), client identity, and per-show/episode
+  state for the grace periods and the debounce.
+- **Configuration** — global policy + per-series overrides.
 
-## Flujo de datos
+## Data flow
 
-1. Login with Plex → token + servidor descubierto (una vez).
-2. Polling de `/status/sessions` (o webhook `media.scrobble`) → "visto hasta E".
-3. Correlación a TVDB vía `/library/metadata/{grandparentRatingKey}?includeGuids=1`.
-4. Motor de ventana calcula GET (monitorizar+buscar adelante) y KEEP/grace (borrar atrás,
-   salvo Always-Have); en dry-run solo registra.
-5. Cliente Sonarr ejecuta: `episode/monitor` + `EpisodeSearch` y `episodefile` delete.
+1. Login with Plex → token + discovered server (once).
+2. Polling of `/status/sessions` (or `media.scrobble` webhook) → "watched up to E".
+3. Correlation to TVDB via `/library/metadata/{grandparentRatingKey}?includeGuids=1`.
+4. Window engine computes GET (monitor+search ahead) and KEEP/grace (delete behind,
+   except Always-Have); in dry-run it only records.
+5. Sonarr client executes: `episode/monitor` + `EpisodeSearch` and `episodefile` delete.
 
-## Decisiones técnicas
+## Technical decisions
 
-1. **Fuente: Plex directo** (abstracción de fuente; Tautulli documentado como alternativa).
-   *Por qué*: es el caso de uso del usuario y evita la dependencia de un segundo servicio.
-2. **Vinculación por Login with Plex (PIN/OAuth)**. *Por qué*: Plex no expone el token
-   fácilmente; el login evita pegarlo a mano y permite descubrir el servidor.
-3. **Detección por polling primario + webhook opcional**. *Por qué*: el polling funciona solo
-   con el token del login (sin Plex Pass ni setup manual); el webhook da menor latencia a
-   quien tenga Plex Pass.
-4. **Trigger "visto" a ~90%**. *Por qué*: coincide con el fin real del episodio (scrobble) y
-   es replicable por polling con `viewOffset/duration`.
-5. **Borrado combinado: conteo + grace**. *Por qué*: el conteo es predecible y el grace cubre
-   inactividad.
-6. **Config global + override por serie**. *Por qué*: arranque simple, con escape para casos
-   especiales sin el modelo de tags por serie de episeerr.
-7. **Dry-run = interruptor maestro (ON por defecto)**. *Por qué*: la app es destructiva; con
-   dry-run no se escribe **nada** en Sonarr (en vivo y sync), solo se previsualiza. Un único
-   switch centralizado en `engine/actions.py`.
-8. **Reconciliación además de detección en vivo**. *Por qué*: el polling/webhook solo ven
-   reproducciones; la sync recoge lo ya visto, lo marcado a mano y lo visto con monitorr apagado.
-9. **Forzar a Pilot opt-in (manual)**. *Por qué*: tocar el estado de monitorización de Sonarr es
-   sensible; se hace solo cuando el usuario lo pide.
+1. **Source: Plex directly** (source abstraction; Tautulli documented as an alternative).
+   *Why*: it's the user's use case and avoids the dependency on a second service.
+2. **Linking via Login with Plex (PIN/OAuth)**. *Why*: Plex doesn't expose the token
+   easily; login avoids pasting it by hand and allows discovering the server.
+3. **Detection via primary polling + optional webhook**. *Why*: polling works with only
+   the login token (no Plex Pass or manual setup); the webhook gives lower latency to
+   those who have Plex Pass.
+4. **"Watched" trigger at ~90%**. *Why*: it matches the real end of the episode (scrobble) and
+   is reproducible by polling with `viewOffset/duration`.
+5. **Combined deletion: count + grace**. *Why*: the count is predictable and grace covers
+   inactivity.
+6. **Global config + per-series override**. *Why*: simple to start, with an escape hatch for
+   special cases without a per-series tag model.
+7. **Dry-run = master switch (ON by default)**. *Why*: the app is destructive; with
+   dry-run **nothing** is written to Sonarr (live and sync), it only previews. A single
+   centralized switch in `engine/actions.py`.
+8. **Reconciliation in addition to live detection**. *Why*: polling/webhook only see
+   playbacks; the sync picks up what's already watched, what's marked by hand and what's watched with monitorr off.
+9. **Force to Pilot opt-in (manual)**. *Why*: touching Sonarr's monitoring state is
+   sensitive; it's done only when the user requests it.
 
-## Decisiones pendientes
+## Pending decisions
 
-- Orden aired vs absolute (anime): el MVP usa orden aired; soportar absolute más adelante.
-- Soporte multiusuario (riesgo de borrar lo que otro no ha visto) — fuera de v1.
-- Login propio de la Web UI (v1 asume LAN de confianza / reverse proxy).
-- Editar la política por serie (override) desde la UI; hoy el override solo activa/desactiva.
+- Aired vs absolute order (anime): the MVP uses aired order; support absolute later.
+- Multi-user support (risk of deleting what someone else hasn't watched) — out of v1.
+- The Web UI's own login (v1 assumes a trusted LAN / reverse proxy).
+- Editing the per-series policy (override) from the UI; today the override only enables/disables.

@@ -1,1 +1,1 @@
-"""Motor de ventana de episodios (núcleo funcional). Ver ../../../.claude/behavior.md."""
+"""Episode window engine (functional core). See ../../../.claude/behavior.md."""
