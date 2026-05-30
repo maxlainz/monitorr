@@ -1,0 +1,103 @@
+import pytest
+
+from monitorr import constants, store
+from monitorr.plex import poller
+from monitorr.plex.client import PlexSession
+
+TVDB = 999
+
+
+def _session(
+    session_key: str, season: int, episode: int, progress: float, *, rating_key: str = "rk"
+) -> PlexSession:
+    return PlexSession(
+        grandparent_title="Show",
+        grandparent_rating_key=rating_key,
+        season=season,
+        episode=episode,
+        view_offset=int(progress * 100),
+        duration=100,
+        session_key=session_key,
+        user="alice",
+    )
+
+
+async def _configure() -> None:
+    await store.set_setting(constants.PLEX_SERVER_URI, "http://plex:32400")
+    await store.set_setting(constants.PLEX_SERVER_TOKEN, "tok")
+    await store.set_setting(constants.PLEX_CLIENT_ID, "cid")
+
+
+@pytest.fixture
+def captured(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int, int]]:
+    """Captura las llamadas a process_watch y resuelve siempre el mismo tvdb."""
+    calls: list[tuple[int, int, int]] = []
+
+    async def fake_process_watch(tvdb_id: int, season: int, episode: int) -> None:
+        calls.append((tvdb_id, season, episode))
+
+    async def fake_resolve(uri: str, token: str, client_id: str, rating_key: str) -> int:
+        return TVDB
+
+    monkeypatch.setattr(poller, "process_watch", fake_process_watch)
+    monkeypatch.setattr(poller, "resolve_tvdb_id", fake_resolve)
+    return calls
+
+
+def _serve(monkeypatch: pytest.MonkeyPatch, sessions: list[PlexSession]) -> None:
+    async def fake_get_sessions(uri: str, token: str, client_id: str) -> list[PlexSession]:
+        return sessions
+
+    monkeypatch.setattr(poller, "get_sessions", fake_get_sessions)
+
+
+async def test_binge_fires_each_episode_same_session_key(
+    monkeypatch: pytest.MonkeyPatch, captured: list[tuple[int, int, int]]
+) -> None:
+    await _configure()
+    fired: set[poller.WatchKey] = set()
+    unresolved: set[str] = set()
+    prev: dict[poller.WatchKey, poller._PrevSession] = {}
+
+    # Mismo sessionKey al auto-reproducir: E1, luego E2, luego re-sondeo de E2.
+    _serve(monkeypatch, [_session("s1", 1, 1, 0.95)])
+    await poller._poll_once(fired, unresolved, prev)
+    _serve(monkeypatch, [_session("s1", 1, 2, 0.95)])
+    await poller._poll_once(fired, unresolved, prev)
+    await poller._poll_once(fired, unresolved, prev)  # E2 de nuevo → debounce
+
+    assert captured == [(TVDB, 1, 1), (TVDB, 1, 2)]
+
+
+async def test_near_complete_session_disappearing_counts_as_watched(
+    monkeypatch: pytest.MonkeyPatch, captured: list[tuple[int, int, int]]
+) -> None:
+    await _configure()
+    fired: set[poller.WatchKey] = set()
+    unresolved: set[str] = set()
+    prev: dict[poller.WatchKey, poller._PrevSession] = {}
+
+    # 0.86 < umbral 0.9 → no dispara en vivo, pero ≥ NEAR_COMPLETE.
+    _serve(monkeypatch, [_session("s2", 1, 5, 0.86)])
+    await poller._poll_once(fired, unresolved, prev)
+    assert captured == []
+
+    _serve(monkeypatch, [])  # la sesión desaparece
+    await poller._poll_once(fired, unresolved, prev)
+    assert captured == [(TVDB, 1, 5)]
+
+
+async def test_low_progress_session_disappearing_is_ignored(
+    monkeypatch: pytest.MonkeyPatch, captured: list[tuple[int, int, int]]
+) -> None:
+    await _configure()
+    fired: set[poller.WatchKey] = set()
+    unresolved: set[str] = set()
+    prev: dict[poller.WatchKey, poller._PrevSession] = {}
+
+    _serve(monkeypatch, [_session("s3", 1, 7, 0.30)])
+    await poller._poll_once(fired, unresolved, prev)
+    _serve(monkeypatch, [])
+    await poller._poll_once(fired, unresolved, prev)
+
+    assert captured == []

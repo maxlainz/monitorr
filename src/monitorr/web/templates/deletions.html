@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}monitorr — Borrados{% endblock %}
+{% block content %}
+<h1>Borrados</h1>
+
+<article>
+  <header><strong>Pendientes (dry-run)</strong> — {{ pending|length }}</header>
+  {% if pending %}
+  <table>
+    <thead><tr><th>TVDB</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      {% for d in pending %}
+      <tr>
+        <td>{{ d.tvdb_id }}</td>
+        <td>S{{ "%02d"|format(d.season) }}E{{ "%02d"|format(d.episode) }}</td>
+        <td>{{ d.reason }}</td>
+        <td>{{ d.created_at[:19] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>Nada pendiente.</p>
+  {% endif %}
+</article>
+
+<article>
+  <header><strong>Borrados reales</strong></header>
+  {% if done %}
+  <table>
+    <thead><tr><th>TVDB</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      {% for d in done %}
+      <tr>
+        <td>{{ d.tvdb_id }}</td>
+        <td>S{{ "%02d"|format(d.season) }}E{{ "%02d"|format(d.episode) }}</td>
+        <td>{{ d.reason }}</td>
+        <td>{{ d.created_at[:19] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>Sin borrados reales todavía.</p>
+  {% endif %}
+</article>
+{% endblock %}

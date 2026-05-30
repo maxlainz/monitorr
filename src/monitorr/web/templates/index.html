@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}monitorr — Estado{% endblock %}
+{% block content %}
+<h1>Estado</h1>
+
+{% if dry_run %}
+<article style="border-left: 4px solid var(--pico-primary);">
+  <strong>Modo dry-run activo.</strong> No se borra nada: los borrados se registran como
+  <a href="/deletions">pendientes</a> ({{ pending|length }}). Desactívalo en
+  <a href="/settings">Ajustes</a> cuando lo hayas revisado.
+</article>
+{% endif %}
+
+<div class="grid">
+  <article>
+    <header><strong>Plex</strong></header>
+    {% if plex.linked %}
+      <p>✅ Vinculado a <strong>{{ plex.name }}</strong>.</p>
+    {% else %}
+      <p>⚠️ Sin vincular. Ve a <a href="/settings">Ajustes</a>.</p>
+    {% endif %}
+  </article>
+  <article>
+    <header><strong>Sonarr</strong></header>
+    {% if sonarr_configured %}
+      <p>✅ Configurado.</p>
+    {% else %}
+      <p>⚠️ Sin configurar. Ve a <a href="/settings">Ajustes</a>.</p>
+    {% endif %}
+  </article>
+</div>
+
+<article>
+  <header><strong>Sincronización</strong></header>
+  <p>
+    Reconcilia el estado visto de Plex (series ya empezadas, marcados a mano, visionados con
+    monitorr apagado) sin esperar a una reproducción.
+  </p>
+  {% if last_sync %}
+  <p>
+    <small>Última: {{ last_sync.at[:19] }} · {{ last_sync.matched }} series con progreso
+      de {{ last_sync.shows }} escaneadas{% if last_sync.normalized %} ·
+      {{ last_sync.normalized }} sin visionado normalizadas a piloto{% endif %}.</small>
+  </p>
+  {% endif %}
+  <form method="post" action="/sync">
+    <button type="submit" {% if sync_running %}aria-busy="true" disabled{% endif %}>
+      {% if sync_running %}Sincronizando…{% else %}Sincronizar ahora{% endif %}
+    </button>
+  </form>
+</article>
+
+<article>
+  <header><strong>Borrados recientes</strong></header>
+  {% if deletions %}
+  <table>
+    <thead><tr><th>Serie</th><th>Episodio</th><th>Motivo</th><th>Cuándo</th><th></th></tr></thead>
+    <tbody>
+      {% for d in deletions %}
+      <tr>
+        <td>{{ d.tvdb_id }}</td>
+        <td>S{{ "%02d"|format(d.season) }}E{{ "%02d"|format(d.episode) }}</td>
+        <td>{{ d.reason }}</td>
+        <td>{{ d.created_at[:19] }}</td>
+        <td>{% if d.dry_run %}<small>dry-run</small>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>Sin actividad de borrado todavía.</p>
+  {% endif %}
+</article>
+{% endblock %}

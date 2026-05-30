@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}monitorr{% endblock %}</title>
+    <link rel="stylesheet" href="/static/pico.min.css" />
+    <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/htmx.min.js" defer></script>
+  </head>
+  <body>
+    <header class="container">
+      <nav>
+        <ul>
+          <li><strong><a href="/">monitorr</a></strong></li>
+        </ul>
+        <ul>
+          <li><a href="/">Estado</a></li>
+          <li><a href="/series">Series</a></li>
+          <li><a href="/deletions">Borrados</a></li>
+          <li><a href="/settings">Ajustes</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main class="container">{% block content %}{% endblock %}</main>
+    <footer class="container">
+      <small>
+        <a href="https://github.com/maxlainz/monitorr">monitorr</a>
+        v{{ app_version }}
+      </small>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+{% if version %}
+<p>✅ Conexión correcta (Sonarr {{ version }}).</p>
+{% else %}
+<p>❌ No se pudo conectar con Sonarr. Revisa URL y API Key.</p>
+{% endif %}
