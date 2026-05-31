@@ -48,6 +48,9 @@ The episode coming from Plex is located by filtering on `seasonNumber` + `episod
 
 - `POST /api/v3/command` with `{ "name": "EpisodeSearch", "episodeIds": [..] }`.
 - Alternatives: `SeasonSearch` (`{name, seriesId, seasonNumber}`), `SeriesSearch`.
+- **Re-search of Missing on sync**: each sync issues `EpisodeSearch` (batched) for episodes that
+  stay monitored, have aired and lack a file, **excluding** those whose `episodeId` is in
+  `GET /api/v3/queue` (already downloading). See [`behavior.md`](behavior.md) (Sync).
 
 ## Delete from disk
 

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import respx
 
@@ -90,6 +92,9 @@ def _mock_sonarr() -> dict[str, respx.Route]:
         "delete": respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
             return_value=httpx.Response(200)
         ),
+        "queue": respx.get(f"{SONARR}/queue").mock(
+            return_value=httpx.Response(200, json={"records": []})
+        ),
     }
 
 
@@ -102,7 +107,8 @@ async def test_sync_seeds_watches_and_applies_window() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 1, "matched": 1, "normalized": 0}  # 999 watched → not normalized
+    # 999 watched → not normalized; all episodes on disk → nothing to re-search
+    assert summary == {"shows": 1, "matched": 1, "normalized": 0, "searched": 0}
     watches = await store.get_watches(TVDB)
     assert {(w.season, w.episode) for w in watches} == {(1, 1), (1, 2)}
     # Anchor = last watched (1,2): monitors ahead (E3) and deletes behind (E1).
@@ -120,7 +126,8 @@ async def test_sync_skips_shows_not_in_sonarr() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 1, "matched": 0, "normalized": 1}  # 999 managed and unwatched
+    # 999 managed and unwatched
+    assert summary == {"shows": 1, "matched": 0, "normalized": 1, "searched": 0}
     assert not leaves.called  # episodes of unmanaged shows are not requested
 
 
@@ -170,11 +177,12 @@ async def test_sync_continues_when_one_series_errors() -> None:
     respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
         return_value=httpx.Response(200)
     )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
 
     summary = await sync.run_sync()
 
     # the failing one doesn't count as matched; having no viewing, it's normalized to pilot.
-    assert summary == {"shows": 2, "matched": 1, "normalized": 1}
+    assert summary == {"shows": 2, "matched": 1, "normalized": 1, "searched": 0}
     assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {(1, 1), (1, 2)}
     last = await sync.get_last_sync()  # updated despite one show's error
     assert last is not None and last["matched"] == 1
@@ -200,7 +208,7 @@ async def test_sync_auto_normalizes_unwatched_managed_series() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 0, "matched": 0, "normalized": 1}
+    assert summary == {"shows": 0, "matched": 0, "normalized": 1, "searched": 0}
     # Keeps the pilot (S01E01); the rest downloaded is left as pending deletion.
     pending = await store.list_deletions(dry_run=True)
     assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 3)}
@@ -217,5 +225,102 @@ async def test_sync_auto_normalize_disabled_by_policy() -> None:
 
     summary = await sync.run_sync()
 
-    assert summary == {"shows": 0, "matched": 0, "normalized": 0}
+    assert summary == {"shows": 0, "matched": 0, "normalized": 0, "searched": 0}
     assert await store.list_deletions(dry_run=True) == []
+
+
+# monitored + aired + no file = Sonarr's "Missing"; one of them is mid-download (in the queue).
+MISSING_EPISODES = [
+    {
+        "id": 301,
+        "seasonNumber": 1,
+        "episodeNumber": 1,
+        "monitored": True,
+        "hasFile": False,
+        "airDateUtc": "2020-01-01T00:00:00Z",
+    },  # missing → re-search
+    {
+        "id": 302,
+        "seasonNumber": 1,
+        "episodeNumber": 2,
+        "monitored": True,
+        "hasFile": False,
+        "airDateUtc": "2020-01-08T00:00:00Z",
+    },  # in the queue → skip
+    {
+        "id": 303,
+        "seasonNumber": 1,
+        "episodeNumber": 3,
+        "monitored": True,
+        "hasFile": True,
+        "episodeFileId": 403,
+        "airDateUtc": "2020-01-15T00:00:00Z",
+    },  # on disk → skip
+    {
+        "id": 304,
+        "seasonNumber": 1,
+        "episodeNumber": 4,
+        "monitored": False,
+        "hasFile": False,
+        "airDateUtc": "2020-01-22T00:00:00Z",
+    },  # unmonitored → skip
+    {
+        "id": 305,
+        "seasonNumber": 1,
+        "episodeNumber": 5,
+        "monitored": True,
+        "hasFile": False,
+        "airDateUtc": "2999-01-01T00:00:00Z",
+    },  # not aired yet → skip
+]
+
+
+@respx.mock
+async def test_sync_researches_missing_excluding_queue() -> None:
+    """Each sync re-searches the Missing episodes (monitored, aired, no file) except the ones
+    already downloading. auto_normalize off + no viewing isolates the re-search pass."""
+    await _configure_links()
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], auto_normalize=False))
+    await set_dry_run(False)
+    _mock_empty_plex()
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=MISSING_EPISODES)
+    )
+    respx.get(f"{SONARR}/queue").mock(
+        return_value=httpx.Response(200, json={"records": [{"id": 1, "episodeId": 302}]})
+    )
+    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+
+    summary = await sync.run_sync()
+
+    assert summary == {"shows": 0, "matched": 0, "normalized": 0, "searched": 1}
+    assert command.call_count == 1
+    body = json.loads(command.calls.last.request.content)
+    assert body == {"name": "EpisodeSearch", "episodeIds": [301]}
+
+
+@respx.mock
+async def test_sync_skips_missing_search_when_search_on_get_disabled() -> None:
+    """search_on_get gates the re-search too: with it off, no EpisodeSearch is issued."""
+    await _configure_links()
+    await set_global_policy(
+        Policy(get_count=1, keep_count=1, always_have=[], auto_normalize=False, search_on_get=False)
+    )
+    await set_dry_run(False)
+    _mock_empty_plex()
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=MISSING_EPISODES)
+    )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
+    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+
+    summary = await sync.run_sync()
+
+    assert summary == {"shows": 0, "matched": 0, "normalized": 0, "searched": 0}
+    assert not command.called

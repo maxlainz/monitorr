@@ -91,6 +91,12 @@ to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normaliz
 triggered by the "Sync now" button, on startup (once) and periodically. It inherits the engine's
 dry-run.
 
+Finally, each sync **re-searches Sonarr's Wanted/Missing**: every managed show's episodes that are
+still **monitored, already aired and without a file** are searched again (`EpisodeSearch`),
+**excluding** the ones already downloading (present in Sonarr's `queue`). This recovers from a
+transient indexer outage where the search at monitor-time found nothing. It is governed by the same
+`search_on_get` flag (ON by default) and respects per-series `enabled` and dry-run.
+
 ## Configuration
 
 - **Single global**: one policy (GET, KEEP, Always-Have, grace, auto-normalize) for all
