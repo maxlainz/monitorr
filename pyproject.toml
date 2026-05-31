@@ -1,6 +1,6 @@
 [project]
 name = "monitorr"
-version = "1.1.0"
+version = "1.2.0"
 description = "Watches viewing in Plex and manages episodes in Sonarr (monitor/keep/delete) API-only."
 readme = "README.md"
 license = "GPL-3.0-or-later"
