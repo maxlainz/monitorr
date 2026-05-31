@@ -4,6 +4,22 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`completed` grace period** (enabled, default 30 days): purges a show (except Always-Have) once
+  you've watched its last aired episode and it has been inactive that many days — covering both
+  finished series and shows on hiatus. Unlike `dormant`, it never deletes aired episodes you haven't
+  watched yet, and GET automatically re-arms via the next sync when a new season airs.
+
+### Changed
+
+- **Upgrade note**: the new `completed` grace defaults to **30 days, enabled**. Installations
+  running with **dry-run OFF** will start purging finished/hiatus shows 30 days after they go
+  inactive. Set *Settings → Completed (days)* to empty to disable it. With dry-run ON (the default)
+  nothing is deleted for real.
+
 ## [1.1.0] - 2026-05-30
 
 ### Added

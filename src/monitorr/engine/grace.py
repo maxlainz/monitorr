@@ -22,6 +22,15 @@ def _age_days(iso_timestamp: str) -> float:
     return (datetime.now(UTC) - moment).total_seconds() / 86400
 
 
+def _is_caught_up(watched_keys: set[tuple[int, int]], all_eps: list[SonarrEpisode]) -> bool:
+    """True if the last aired episode (airing order) has been watched: nothing aired is left
+    unseen. Future (unaired) episodes don't count — they aren't downloadable yet."""
+    aired = [(e.season_number, e.episode_number) for e in all_eps if e.has_aired()]
+    if not aired or not watched_keys:
+        return False
+    return max(watched_keys) >= max(aired)
+
+
 async def _sweep_series(
     base_url: str, api_key: str, tvdb_id: int, last_activity: str, dry_run: bool
 ) -> None:
@@ -32,22 +41,38 @@ async def _sweep_series(
         policy.grace_watched_days is None
         and policy.grace_unwatched_days is None
         and policy.dormant_days is None
+        and policy.grace_completed_days is None
     ):
         return
 
     series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
     if series is None:
         return
-    episodes = [
-        e
-        for e in await sonarr.get_episodes(base_url, api_key, series.id)
-        if e.season_number >= 1 and e.has_file
+    all_eps = [
+        e for e in await sonarr.get_episodes(base_url, api_key, series.id) if e.season_number >= 1
     ]
+    episodes = [e for e in all_eps if e.has_file]
     if not episodes:
         return
 
     watches = {(w.season, w.episode): w.watched_at for w in await store.get_watches(tvdb_id)}
     activity_age = _age_days(last_activity)
+
+    # completed: the show has nothing aired left to watch and has been inactive too long → purge
+    # everything deletable (dormant + the "caught up" filter, so it never deletes aired-but-unseen
+    # episodes). GET re-arms via sync's apply_window when a new season airs.
+    if (
+        policy.grace_completed_days is not None
+        and activity_age > policy.grace_completed_days
+        and _is_caught_up(set(watches), all_eps)
+    ):
+        for episode in episodes:
+            if matches_always_have(
+                policy.always_have, episode.season_number, episode.episode_number
+            ):
+                continue
+            await delete_episode(base_url, api_key, tvdb_id, episode, "completed", dry_run)
+        return
 
     # dormant: show inactive too long → delete everything deletable.
     if policy.dormant_days is not None and activity_age > policy.dormant_days:

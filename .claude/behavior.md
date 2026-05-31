@@ -40,13 +40,29 @@ the first check before any deletion.
 
 They complement KEEP with a temporal criterion (days without activity on the show):
 
-- **watched**: deletes already-watched episodes after X days. *Default: 7.*
+- **watched**: deletes already-watched episodes after X days, keeping the most recent one as a
+  marker. *Default: 7.*
 - **unwatched**: deletes unwatched episodes after X days. *Default: 365.*
-- **dormant**: deletes everything deletable from the show if it has gone X days without viewing.
-  *Default: unassigned (`None`) → disabled: an inactive show is never purged in bulk.*
+- **dormant**: deletes everything deletable from the show if it has gone X days without viewing,
+  regardless of whether episodes are watched. *Default: unassigned (`None`) → disabled: an inactive
+  show is never purged in bulk.*
+- **completed**: purges everything deletable (except Always-Have) when the show is **finished or on
+  hiatus** and has gone X days without activity. *Default: 30, enabled.* It's **`dormant` + the
+  "caught up" filter**: it only fires when the **last aired episode has been watched** (nothing
+  aired is left unseen), so it never deletes aired-but-unwatched episodes. The combination
+  "caught up + inactive X days" distinguishes the cases without inspecting Sonarr's series status or
+  the next air date: a weekly show followed on time never reaches X inactive days while caught up
+  (each new episode resets the clock); one dropped mid-run isn't caught up (aired episodes pile up
+  unseen); a finished/hiatus show is caught up and goes inactive → purged. A future (unaired)
+  episode doesn't count, since it isn't downloadable yet. **GET re-arms** when the show returns: the
+  purge keeps the `episode_watch` anchor, so the next [sync](#sync--reconciliation) runs
+  `apply_window` over the last watched and monitors/searches the new season ahead (this happens via
+  sync, not live, because an undownloaded episode can't be played to trigger the live path).
 
 Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
-per show/episode (last watched, first unwatched, last activity). They respect Always-Have.
+per show/episode (last watched, first unwatched, last activity). They respect Always-Have. Implemented
+in `engine/grace.py`; `completed` is evaluated before `dormant` so a caught-up purge is logged with
+the more precise `completed` reason.
 
 ## Dry-run (master switch)
 

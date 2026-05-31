@@ -121,13 +121,6 @@ async def _normalize_unwatched(
     return normalized
 
 
-def _has_aired(air_date_utc: str | None) -> bool:
-    """An episode counts as Missing only once it has aired (no point searching the future)."""
-    if not air_date_utc:
-        return False
-    return datetime.fromisoformat(air_date_utc) <= datetime.now(UTC)
-
-
 async def _search_missing(
     base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
 ) -> int:
@@ -145,10 +138,7 @@ async def _search_missing(
             missing = [
                 e.id
                 for e in await sonarr.get_episodes(base_url, api_key, series.id)
-                if e.monitored
-                and not e.has_file
-                and _has_aired(e.air_date_utc)
-                and e.id not in queued
+                if e.monitored and not e.has_file and e.has_aired() and e.id not in queued
             ]
             if missing:
                 await actions.search_episodes(base_url, api_key, missing, dry_run)
