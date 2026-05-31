@@ -171,9 +171,12 @@ async def test_forward_trim_deletes_files_and_unmonitors_in_real_mode() -> None:
     assert routes["delete"].call_count == 3
     done = await store.list_deletions(dry_run=False)
     assert {(d.episode, d.reason) for d in done} == {(1, "keep"), (4, "ahead"), (5, "ahead")}
-    # E6 (no file, monitored) is unmonitored, not deleted.
+    # Unmonitored (decoupled from delete): the kept anchor E2 (102) and the fileless ahead E6 (106).
     monitor_payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
-    assert {"episodeIds": [106], "monitored": False} in monitor_payloads
+    unmonitored = {
+        eid for p in monitor_payloads if p["monitored"] is False for eid in p["episodeIds"]
+    }
+    assert {102, 106} <= unmonitored
 
 
 @respx.mock
@@ -187,6 +190,29 @@ async def test_forward_trim_respects_always_have() -> None:
     pending = await store.list_deletions(dry_run=True)
     assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 4)}
     assert not routes["delete"].called
+
+
+@respx.mock
+async def test_unmonitors_watched_kept_episodes_without_deleting() -> None:
+    # Whole season protected from deletion (Always-Have S*) + preload by episodes (GET=1).
+    await _configure(always_have=["S*"])
+    await set_dry_run(False)
+    routes = _mock_sonarr(AHEAD_EPISODES)
+
+    await apply_window(TVDB, season=1, episode=3)  # anchor E3, GET=1 → keeps E4 monitored
+
+    # Nothing is deleted: S* protects every episode's file.
+    assert not routes["delete"].called
+    # But the watched/kept episodes on disk (E1-E3, E5) and the fileless E6 are unmonitored,
+    # so the season never becomes fully monitored (no season-pack upgrade). E4 stays monitored.
+    monitor_payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    unmonitored = {
+        eid for p in monitor_payloads if p["monitored"] is False for eid in p["episodeIds"]
+    }
+    monitored = {eid for p in monitor_payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert {101, 102, 103, 105, 106} <= unmonitored
+    assert 104 in monitored
+    assert 104 not in unmonitored
 
 
 def _mock_sonarr_seasons(series_obj: dict[str, object]) -> respx.Route:

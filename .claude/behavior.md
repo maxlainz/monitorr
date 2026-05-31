@@ -30,6 +30,17 @@ Two parameters, configurable in **episodes or seasons**:
   rest, older than the KEEP window, is **deleted** (`episodefile` delete) and
   **unmonitored** (reason `keep`), unless protected by *Always-Have*.
 
+**Monitoring is decoupled from retention**: `monitored ≡ GET window`. Only the GET-ahead
+episodes stay monitored (what monitorr actively wants Sonarr to fetch/upgrade); **everything
+else is unmonitored while keeping its file** — the just-watched anchor, the kept-behind
+episodes (KEEP) and the on-disk episodes protected by *Always-Have*. The file is retained by
+KEEP/Always-Have; the monitoring is dropped so Sonarr never tries to **upgrade** an episode
+that won't be re-watched, and a season never reaches the *all-episodes-monitored* state that
+lets Sonarr grab a **season-pack upgrade** (see `sonarr.md`). Unmonitoring is non-destructive
+(no preview/log entry like deletions). In by-seasons mode the GET-window **seasons** stay
+monitored at the season level (so new episodes inherit it), while their already-watched
+**episodes** are unmonitored individually — the season-pack-proof combination.
+
 ## Always-Have (protection)
 
 Episodes that are **never** deleted even if they fall outside KEEP or a grace period. Patterns:
@@ -140,6 +151,10 @@ transient indexer outage where the search at monitor-time found nothing. It is g
   isolated season; the "next" one can fall in the following season.
 - **Specials (`S00`)**: **excluded** from GET/KEEP/grace.
 - **Episode without file** (`hasFile:false`): there's nothing to delete; monitoring only.
+- **Season-pack upgrade on a fully-monitored season**: prevented because watched/kept episodes
+  are **unmonitored** (file kept) once they leave the GET window — the season never reaches the
+  all-episodes-monitored state Sonarr requires to accept a season pack, so it can't re-download
+  ~hundreds of GB as an "upgrade" of episodes that won't be re-watched.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**
