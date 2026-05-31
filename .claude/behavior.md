@@ -30,6 +30,17 @@ Two parameters, configurable in **episodes or seasons**:
   rest, older than the KEEP window, is **deleted** (`episodefile` delete) and
   **unmonitored** (reason `keep`), unless protected by *Always-Have*.
 
+**Monitoring is decoupled from retention**: `monitored ≡ GET window`. Only the GET-ahead
+episodes stay monitored (what monitorr actively wants Sonarr to fetch/upgrade); **everything
+else is unmonitored while keeping its file** — the just-watched anchor, the kept-behind
+episodes (KEEP) and the on-disk episodes protected by *Always-Have*. The file is retained by
+KEEP/Always-Have; the monitoring is dropped so Sonarr never tries to **upgrade** an episode
+that won't be re-watched, and a season never reaches the *all-episodes-monitored* state that
+lets Sonarr grab a **season-pack upgrade** (see `sonarr.md`). Unmonitoring is non-destructive
+(no preview/log entry like deletions). In by-seasons mode the GET-window **seasons** stay
+monitored at the season level (so new episodes inherit it), while their already-watched
+**episodes** are unmonitored individually — the season-pack-proof combination.
+
 ## Always-Have (protection)
 
 Episodes that are **never** deleted even if they fall outside KEEP or a grace period. Patterns:
@@ -40,13 +51,29 @@ the first check before any deletion.
 
 They complement KEEP with a temporal criterion (days without activity on the show):
 
-- **watched**: deletes already-watched episodes after X days. *Default: 7.*
+- **watched**: deletes already-watched episodes after X days, keeping the most recent one as a
+  marker. *Default: 7.*
 - **unwatched**: deletes unwatched episodes after X days. *Default: 365.*
-- **dormant**: deletes everything deletable from the show if it has gone X days without viewing.
-  *Default: unassigned (`None`) → disabled: an inactive show is never purged in bulk.*
+- **dormant**: deletes everything deletable from the show if it has gone X days without viewing,
+  regardless of whether episodes are watched. *Default: unassigned (`None`) → disabled: an inactive
+  show is never purged in bulk.*
+- **completed**: purges everything deletable (except Always-Have) when the show is **finished or on
+  hiatus** and has gone X days without activity. *Default: 30, enabled.* It's **`dormant` + the
+  "caught up" filter**: it only fires when the **last aired episode has been watched** (nothing
+  aired is left unseen), so it never deletes aired-but-unwatched episodes. The combination
+  "caught up + inactive X days" distinguishes the cases without inspecting Sonarr's series status or
+  the next air date: a weekly show followed on time never reaches X inactive days while caught up
+  (each new episode resets the clock); one dropped mid-run isn't caught up (aired episodes pile up
+  unseen); a finished/hiatus show is caught up and goes inactive → purged. A future (unaired)
+  episode doesn't count, since it isn't downloadable yet. **GET re-arms** when the show returns: the
+  purge keeps the `episode_watch` anchor, so the next [sync](#sync--reconciliation) runs
+  `apply_window` over the last watched and monitors/searches the new season ahead (this happens via
+  sync, not live, because an undownloaded episode can't be played to trigger the live path).
 
 Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
-per show/episode (last watched, first unwatched, last activity). They respect Always-Have.
+per show/episode (last watched, first unwatched, last activity). They respect Always-Have. Implemented
+in `engine/grace.py`; `completed` is evaluated before `dormant` so a caught-up purge is logged with
+the more precise `completed` reason.
 
 ## Dry-run (master switch)
 
@@ -91,6 +118,12 @@ to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normaliz
 triggered by the "Sync now" button, on startup (once) and periodically. It inherits the engine's
 dry-run.
 
+Finally, each sync **re-searches Sonarr's Wanted/Missing**: every managed show's episodes that are
+still **monitored, already aired and without a file** are searched again (`EpisodeSearch`),
+**excluding** the ones already downloading (present in Sonarr's `queue`). This recovers from a
+transient indexer outage where the search at monitor-time found nothing. It is governed by the same
+`search_on_get` flag (ON by default) and respects per-series `enabled` and dry-run.
+
 ## Configuration
 
 - **Single global**: one policy (GET, KEEP, Always-Have, grace, auto-normalize) for all
@@ -118,6 +151,10 @@ dry-run.
   isolated season; the "next" one can fall in the following season.
 - **Specials (`S00`)**: **excluded** from GET/KEEP/grace.
 - **Episode without file** (`hasFile:false`): there's nothing to delete; monitoring only.
+- **Season-pack upgrade on a fully-monitored season**: prevented because watched/kept episodes
+  are **unmonitored** (file kept) once they leave the GET window — the season never reaches the
+  all-episodes-monitored state Sonarr requires to accept a season pack, so it can't re-download
+  ~hundreds of GB as an "upgrade" of episodes that won't be re-watched.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**

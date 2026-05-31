@@ -50,7 +50,7 @@ async def _run() -> dict[str, int]:
     cfg = await sonarr.get_config()
     if server is None or client_id is None or cfg is None:
         logger.warning("sync: Plex or Sonarr are not ready")
-        return {"shows": 0, "matched": 0, "normalized": 0}
+        return {"shows": 0, "matched": 0, "normalized": 0, "searched": 0}
     uri, token = server
     base_url, api_key = cfg
     dry_run = await get_dry_run()
@@ -81,8 +81,14 @@ async def _run() -> dict[str, int]:
                 logger.exception("error syncing tvdb=%s", show.tvdb_id)
 
     normalized = await _normalize_unwatched(base_url, api_key, managed_series, dry_run)
+    searched = await _search_missing(base_url, api_key, managed_series, dry_run)
 
-    summary = {"shows": shows, "matched": matched, "normalized": normalized}
+    summary = {
+        "shows": shows,
+        "matched": matched,
+        "normalized": normalized,
+        "searched": searched,
+    }
     await store.set_setting(
         _LAST_SYNC, json.dumps({"at": datetime.now(UTC).isoformat(), **summary})
     )
@@ -113,3 +119,30 @@ async def _normalize_unwatched(
         except Exception:
             logger.exception("error normalizing tvdb=%s", series.tvdb_id)
     return normalized
+
+
+async def _search_missing(
+    base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
+) -> int:
+    """Re-search Sonarr's Wanted/Missing on every sync: episodes that stay monitored, have
+    already aired and still lack a file, excluding the ones already downloading (in the queue).
+    Recovers from transient indexer outages where the search at monitor-time found nothing.
+    Respects override (enabled / search_on_get) and dry-run."""
+    queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
+    searched = 0
+    for series in managed_series:
+        policy, enabled = await effective_policy(series.tvdb_id)
+        if not enabled or not policy.search_on_get:
+            continue
+        try:
+            missing = [
+                e.id
+                for e in await sonarr.get_episodes(base_url, api_key, series.id)
+                if e.monitored and not e.has_file and e.has_aired() and e.id not in queued
+            ]
+            if missing:
+                await actions.search_episodes(base_url, api_key, missing, dry_run)
+                searched += len(missing)
+        except Exception:
+            logger.exception("error re-searching missing tvdb=%s", series.tvdb_id)
+    return searched

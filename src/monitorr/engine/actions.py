@@ -43,8 +43,10 @@ async def set_seasons_monitored(
 async def unmonitor_episodes(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:
-    """Unmonitors fileless episodes that fall outside the GET window (there's nothing to
-    delete, just preventing Sonarr from downloading them). Guarded by dry-run."""
+    """Unmonitors every episode outside the GET window — including watched/kept ones still on
+    disk (KEEP or Always-Have). Monitoring is decoupled from deletion: the file stays, but Sonarr
+    stops trying to upgrade it, so a fully-monitored season never triggers a season-pack grab of
+    episodes that won't be re-watched. Guarded by dry-run."""
     if not episode_ids:
         return
     if dry_run:

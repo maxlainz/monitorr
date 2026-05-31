@@ -22,6 +22,7 @@ class Policy(BaseModel):
     grace_watched_days: int | None = 7
     grace_unwatched_days: int | None = 365
     dormant_days: int | None = None
+    grace_completed_days: int | None = 30
     search_on_get: bool = True
     auto_normalize: bool = True
 

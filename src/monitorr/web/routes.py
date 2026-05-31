@@ -166,6 +166,7 @@ async def save_policy(
     grace_watched_days: str = Form(""),
     grace_unwatched_days: str = Form(""),
     dormant_days: str = Form(""),
+    grace_completed_days: str = Form(""),
     search_on_get: str | None = Form(None),
     auto_normalize: str | None = Form(None),
     watched_threshold: float = Form(0.9),
@@ -188,6 +189,7 @@ async def save_policy(
         grace_watched_days=_opt_int(grace_watched_days),
         grace_unwatched_days=_opt_int(grace_unwatched_days),
         dormant_days=_opt_int(dormant_days),
+        grace_completed_days=_opt_int(grace_completed_days),
         search_on_get=search_on_get is not None,
         auto_normalize=auto_normalize is not None,
     )

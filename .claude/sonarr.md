@@ -48,6 +48,9 @@ The episode coming from Plex is located by filtering on `seasonNumber` + `episod
 
 - `POST /api/v3/command` with `{ "name": "EpisodeSearch", "episodeIds": [..] }`.
 - Alternatives: `SeasonSearch` (`{name, seriesId, seasonNumber}`), `SeriesSearch`.
+- **Re-search of Missing on sync**: each sync issues `EpisodeSearch` (batched) for episodes that
+  stay monitored, have aired and lack a file, **excluding** those whose `episodeId` is in
+  `GET /api/v3/queue` (already downloading). See [`behavior.md`](behavior.md) (Sync).
 
 ## Delete from disk
 
@@ -65,7 +68,10 @@ The episode coming from Plex is located by filtering on `seasonNumber` + `episod
   not downloaded.
 - `PUT /api/v3/series/{id}` with a partial object fails → always GET-modify-PUT.
 - **Season packs**: Sonarr only accepts the season pack if **all** the episodes of
-  that season are monitored.
+  that season are monitored. monitorr deliberately avoids that state by **unmonitoring
+  watched/kept episodes** (keeping their file) once they leave the GET window, so a season is
+  never 100% monitored and Sonarr can't grab a season-pack "upgrade" — see `behavior.md`
+  (monitoring decoupled from retention).
 - There is no officially documented rate limit; even so, batch them (`episodeIds: [..]`) instead
   of one call per episode.
 - `DELETE /api/v3/episode/{id}` doesn't exist; to "drop" an episode without deleting the file use

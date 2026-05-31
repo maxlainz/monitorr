@@ -40,7 +40,8 @@
   <p>
     <small>Last: {{ last_sync.at[:19] }} · {{ last_sync.matched }} shows with progress
       out of {{ last_sync.shows }} scanned{% if last_sync.normalized %} ·
-      {{ last_sync.normalized }} without viewing normalized to pilot{% endif %}.</small>
+      {{ last_sync.normalized }} without viewing normalized to pilot{% endif %}{%
+      if last_sync.searched %} · {{ last_sync.searched }} missing re-searched{% endif %}.</small>
   </p>
   {% endif %}
   <form method="post" action="/sync">

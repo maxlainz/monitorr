@@ -1,5 +1,7 @@
 """Sonarr client (API v3/v4). See .claude/sonarr.md for endpoints and gotchas."""
 
+from datetime import UTC, datetime
+
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +39,11 @@ class SonarrEpisode(BaseModel):
     has_file: bool = Field(alias="hasFile", default=False)
     episode_file_id: int = Field(alias="episodeFileId", default=0)
     air_date_utc: str | None = Field(alias="airDateUtc", default=None)
+
+    def has_aired(self) -> bool:
+        if not self.air_date_utc:
+            return False
+        return datetime.fromisoformat(self.air_date_utc) <= datetime.now(UTC)
 
 
 async def get_config() -> tuple[str, str] | None:

@@ -88,10 +88,11 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
                 base_url, api_key, [e.id for e in ahead if not e.has_file], dry_run
             )
 
-    # Trim ahead: anything beyond the GET window is deleted if on disk (symmetric to
-    # KEEP) or unmonitored if not yet downloaded, except Always-Have.
     ahead_ids = {e.id for e in ahead}
-    to_unmonitor: list[int] = []
+    deleted_ids: set[int] = set()
+
+    # Trim ahead: on-disk episodes beyond the GET window are deleted (symmetric to KEEP),
+    # except Always-Have. Their unmonitoring is handled by the batch below.
     for candidate in real[idx + 1 :]:
         if candidate.id in ahead_ids:
             continue
@@ -101,9 +102,7 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
             continue
         if candidate.has_file:
             await actions.delete_episode(base_url, api_key, tvdb_id, candidate, "ahead", dry_run)
-        elif candidate.monitored:
-            to_unmonitor.append(candidate.id)
-    await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)
+            deleted_ids.add(candidate.id)
 
     # KEEP: delete behind whatever falls outside the window, except Always-Have.
     for i in range(idx):
@@ -117,3 +116,15 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         ):
             continue
         await actions.delete_episode(base_url, api_key, tvdb_id, candidate, "keep", dry_run)
+        deleted_ids.add(candidate.id)
+
+    # Monitoring is decoupled from deletion: monitorr keeps monitored ONLY the GET window (what
+    # it actively wants Sonarr to fetch/upgrade). Everything else still monitored — the watched
+    # anchor, kept-behind episodes and on-disk episodes protected by Always-Have — is unmonitored
+    # while keeping its file, so Sonarr never sees a fully-monitored season and grabs a
+    # season-pack "upgrade" of episodes that won't be re-watched. delete_episode already
+    # unmonitors what it removes, so exclude deleted_ids.
+    to_unmonitor = [
+        e.id for e in real if e.id not in ahead_ids and e.monitored and e.id not in deleted_ids
+    ]
+    await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)

@@ -4,6 +4,35 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.2.0] - 2026-05-31
+
+### Added
+
+- **`completed` grace period** (enabled, default 30 days): purges a show (except Always-Have) once
+  you've watched its last aired episode and it has been inactive that many days — covering both
+  finished series and shows on hiatus. Unlike `dormant`, it never deletes aired episodes you haven't
+  watched yet, and GET automatically re-arms via the next sync when a new season airs.
+- **Re-search of Sonarr's Wanted/Missing on every sync**: monitored episodes that have aired and
+  still lack a file are searched again on each sync (excluding those already downloading in Sonarr's
+  queue), recovering from transient indexer outages where the monitor-time search found nothing.
+  Governed by the existing `search_on_get` flag (ON by default); the sync summary now reports a
+  **searched** count, surfaced on the home page.
+
+### Changed
+
+- **Upgrade note**: the new `completed` grace defaults to **30 days, enabled**. Installations
+  running with **dry-run OFF** will start purging finished/hiatus shows 30 days after they go
+  inactive. Set *Settings → Completed (days)* to empty to disable it. With dry-run ON (the default)
+  nothing is deleted for real.
+
+### Fixed
+
+- **Useless season-pack "upgrades"** (hundreds of GB): advancing through a season left every
+  episode both on disk and monitored — the all-episodes-monitored state Sonarr needs to grab a
+  season pack. Unmonitoring is now decoupled from deletion: monitoring intent tracks the GET-ahead
+  window only (`monitored ≡ GET window`), independent of file retention, so kept/watched and
+  on-disk Always-Have episodes are unmonitored while their files are preserved.
+
 ## [1.1.0] - 2026-05-30
 
 ### Added
@@ -60,6 +89,7 @@ First public release. monitorr watches viewing in Plex and manages episodes in S
 - **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
   automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
+[1.2.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.2.0
 [1.1.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.1.0
 [1.0.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.1
 [1.0.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.0
