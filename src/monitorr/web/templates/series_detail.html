@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}monitorr — {{ title or tvdb_id }}{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>{{ title or "TVDB " ~ tvdb_id }}</h1>
+  <p>
+    TVDB {{ tvdb_id }} ·
+    {% if not enabled %}<mark>monitorr disabled</mark> ·{% endif %}
+    {% if override_active %}custom policy{% else %}inheriting the global policy{% endif %}
+  </p>
+</hgroup>
+
+<p><a href="/series">← Back to Series</a></p>
+
+<article>
+  <header><strong>Per-series policy</strong></header>
+  <p>
+    These values override the global policy for this show only. Fields work exactly like the
+    global ones in <a href="/settings">Settings</a>. The form is pre-filled with what currently
+    applies; saving stores a full override. Use <em>Reset to global</em> to follow the global
+    policy again.
+  </p>
+  <form method="post" action="/series/{{ tvdb_id }}/policy">
+    {% include "_policy_fields.html" %}
+    <button type="submit">Save per-series policy</button>
+  </form>
+
+  {% if override_active %}
+  <form method="post" action="/series/{{ tvdb_id }}/policy/reset">
+    <button type="submit" class="secondary outline">Reset to global</button>
+  </form>
+  {% endif %}
+</article>
+{% endblock %}

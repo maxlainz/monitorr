@@ -31,7 +31,8 @@ actually watching.
   season is dropping) and the sync reads your Plex watch history and jumps the window straight
   to your **last watched episode** — it doesn't re-download the series from the pilot.
 - **Login with Plex** — PIN/OAuth linking and automatic server discovery.
-- **Global config + per-series overrides**, editable from the Web UI.
+- **Global config + per-series overrides** — edit GET/KEEP/Always-Have/grace per show (or just
+  enable/disable it), then Reset to global anytime. All from the Web UI.
 - **Single multi-arch image** (amd64/arm64), SQLite, no external services.
 
 ## How it works
