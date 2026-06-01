@@ -8,7 +8,9 @@ documentation, see [`documentation.md`](documentation.md).
 - Working branch: `dev`. Never commit directly to `main`.
 - After each code edit → commit on `dev` → `git push` immediately.
 - Merge to `main` only if the user explicitly asks. The message must summarize everything
-  new since the previous commit on `main`.
+  new since the previous commit on `main`. A bare/generic subject like `Merge dev` or
+  `merge to main` is **not acceptable**: the body must list every feature, fix and change
+  that arrives at `main`.
 - `CLAUDE.md` and `.claude/` **do** go into `main` in this repo (they are not excluded in the merge).
 - Commits in English, short and descriptive message. Conventional prefixes (`feat:`,
   `fix:`, `docs:`, `chore:`, `refactor:`) are welcome but not mandatory.

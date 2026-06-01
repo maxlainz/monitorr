@@ -99,6 +99,8 @@ Container-only (read by [`docker-entrypoint.sh`](../docker-entrypoint.sh), **not
 
 `main` only receives explicit merges. `CLAUDE.md` and `.claude/` **travel to `main`** (they are
 not excluded). The merge message summarizes everything new since the previous commit on `main`.
+A bare subject like `Merge dev` / `merge to main` is **not acceptable** — the body must enumerate
+every feature, fix and change reaching `main` (Added/Changed/Fixed, mirroring the changelog).
 
 ```bash
 git checkout main

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from monitorr import store
 from monitorr.engine.actions import delete_episode
 from monitorr.engine.policy import effective_policy, get_dry_run, matches_always_have
+from monitorr.engine.window import keep_protected_keys
 from monitorr.sonarr import client as sonarr
 from monitorr.sonarr.client import SonarrEpisode
 
@@ -84,6 +85,21 @@ async def _sweep_series(
             await delete_episode(base_url, api_key, tvdb_id, episode, "dormant", dry_run)
         return
 
+    # KEEP floor: the ongoing trims (watched/unwatched) must not delete what the KEEP window
+    # guarantees on disk, relative to the latest watched episode (the viewing point). KEEP is the
+    # spatial retention guarantee; grace only trims what already falls outside it. (The bulk purges
+    # completed/dormant above intentionally ignore KEEP — the show is finished/abandoned.)
+    real = sorted(all_eps, key=lambda e: (e.season_number, e.episode_number))
+    kept_keys: set[tuple[int, int]] = set()
+    if watches:
+        anchor = max(watches)  # latest watched in airing order = current viewing point
+        anchor_idx = next(
+            (i for i, e in enumerate(real) if (e.season_number, e.episode_number) == anchor),
+            None,
+        )
+        if anchor_idx is not None:
+            kept_keys = keep_protected_keys(real, anchor_idx, policy)
+
     # watched: watched more than X days ago, keeping the most recent one as a marker.
     if policy.grace_watched_days is not None:
         watched: list[tuple[SonarrEpisode, str]] = []
@@ -95,6 +111,8 @@ async def _sweep_series(
             marker = max(watched, key=lambda item: item[1])[0]
             for episode, seen_at in watched:
                 if episode is marker or _age_days(seen_at) <= policy.grace_watched_days:
+                    continue
+                if (episode.season_number, episode.episode_number) in kept_keys:
                     continue
                 if matches_always_have(
                     policy.always_have, episode.season_number, episode.episode_number
@@ -109,6 +127,8 @@ async def _sweep_series(
             key=lambda e: (e.season_number, e.episode_number),
         )
         for episode in unwatched[1:]:
+            if (episode.season_number, episode.episode_number) in kept_keys:
+                continue
             if matches_always_have(
                 policy.always_have, episode.season_number, episode.episode_number
             ):

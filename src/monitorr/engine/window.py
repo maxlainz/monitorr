@@ -44,6 +44,19 @@ def _should_delete_behind(real: list[SonarrEpisode], idx: int, policy: Policy, i
     return i < idx - policy.keep_count + 1
 
 
+def keep_protected_keys(
+    real: list[SonarrEpisode], anchor_idx: int, policy: Policy
+) -> set[tuple[int, int]]:
+    """(season, episode) keys the KEEP window guarantees on disk: the anchor plus the episodes
+    behind it that fall inside KEEP. Shared with the grace sweep so KEEP acts as a retention
+    floor — the time-based trims only delete what already falls outside KEEP."""
+    keys = {(real[anchor_idx].season_number, real[anchor_idx].episode_number)}
+    for i in range(anchor_idx):
+        if not _should_delete_behind(real, anchor_idx, policy, i):
+            keys.add((real[i].season_number, real[i].episode_number))
+    return keys
+
+
 async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
     policy, enabled = await effective_policy(tvdb_id)
     if not enabled:
