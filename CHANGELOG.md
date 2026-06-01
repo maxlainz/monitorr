@@ -4,6 +4,22 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.4.0] - 2026-06-01
+
+### Added
+
+- **Per-series policy editing in the Web UI**: each show now has its own page (Series → *Edit*)
+  to override the full policy — GET/KEEP and units, Always-Have, the grace periods,
+  `search_on_get` and `auto_normalize` — not just enable/disable. The override is stored as a
+  complete snapshot and replaces the global policy for that show; **Reset to global** drops it so
+  the show follows the global policy again. The Series list shows a **custom/global** badge per
+  show. `dry_run`, the watched threshold and the Plex user filter remain global.
+
+### Fixed
+
+- **Toggling enable/disable wiped a per-series policy**: the enable/disable switch used to clear
+  any stored per-series override. It now preserves the override and only flips the enabled flag.
+
 ## [1.3.0] - 2026-06-01
 
 ### Added
