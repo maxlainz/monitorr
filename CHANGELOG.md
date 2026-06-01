@@ -4,6 +4,25 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.3.0] - 2026-06-01
+
+### Added
+
+- **Auto-registration of the `media.scrobble` webhook in Plex on link**: after Login with Plex,
+  monitorr pushes its `/webhook/plex/{secret}` URL into the account-level Plex webhooks API
+  (best-effort), so Plex Pass users get low-latency detection without copy-pasting it. A Settings
+  button re-registers / removes it, Regenerate re-syncs only when already registered, and Unlink
+  removes monitorr's entry. The account-wide list (shared with other integrations) is never
+  clobbered — GET → drop our entries → append → POST — and the webhook URL field is editable for
+  reachability (localhost / reverse proxy).
+
+### Documentation
+
+- **Retroactive (back-catalog) watch detection** is now documented: adding a show you already
+  watched in Plex (e.g. when a new season drops) makes the sync read your Plex watch history and
+  jump the window to your last watched episode instead of re-downloading from the pilot. Existing
+  behaviour — no functional change.
+
 ## [1.2.1] - 2026-06-01
 
 ### Fixed
