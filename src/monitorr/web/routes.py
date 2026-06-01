@@ -30,8 +30,12 @@ from monitorr.plex.client import (
 from monitorr.plex.poller import process_watch
 from monitorr.plex.webhook import (
     get_or_create_webhook_secret,
+    is_webhook_registered,
     parse_scrobble,
     regenerate_webhook_secret,
+    register_webhook,
+    resync_webhook,
+    unregister_webhooks,
 )
 from monitorr.sonarr import client as sonarr
 
@@ -73,6 +77,37 @@ async def _store_server(server: PlexServer) -> bool:
     return True
 
 
+async def _plex_account() -> tuple[str, str] | None:
+    """The account token + client id, present once linked."""
+    token = await store.get_setting(constants.PLEX_ACCOUNT_TOKEN)
+    client_id = await store.get_setting(constants.PLEX_CLIENT_ID)
+    return (token, client_id) if token and client_id else None
+
+
+async def _try_register_webhook(request: Request) -> None:
+    """Best-effort: push monitorr's webhook URL into the linked Plex account (Plex Pass)."""
+    account = await _plex_account()
+    if account is None:
+        return
+    secret = await get_or_create_webhook_secret()
+    try:
+        await register_webhook(*account, _webhook_url(request, secret))
+    except Exception:
+        logger.exception("could not register Plex webhook")
+
+
+async def _webhook_registered(webhook_url: str) -> bool | None:
+    """Whether monitorr's URL is in the Plex account list; None when it can't be checked."""
+    account = await _plex_account()
+    if account is None:
+        return None
+    try:
+        return await is_webhook_registered(*account, webhook_url)
+    except Exception:
+        logger.warning("could not read Plex webhook status", exc_info=True)
+        return None
+
+
 # --- pages ---
 
 
@@ -95,6 +130,7 @@ async def index(request: Request) -> HTMLResponse:
 async def settings_page(request: Request) -> HTMLResponse:
     sonarr_url = await store.get_setting(constants.SONARR_URL)
     secret = await get_or_create_webhook_secret()
+    webhook_url = _webhook_url(request, secret)
     context = {
         "plex": await _plex_status(),
         "sonarr_url": sonarr_url or "",
@@ -103,8 +139,9 @@ async def settings_page(request: Request) -> HTMLResponse:
         "dry_run": await get_dry_run(),
         "watched_threshold": await get_watched_threshold(),
         "user_filter": ", ".join(await get_user_filter()),
-        "webhook_url": _webhook_url(request, secret),
+        "webhook_url": webhook_url,
         "webhook_pinned_by_env": bool(get_settings().webhook_secret),
+        "webhook_registered": await _webhook_registered(webhook_url),
     }
     return templates.TemplateResponse(request, "settings.html", context)
 
@@ -244,6 +281,7 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
             {"state": "error", "message": "No Plex servers found."},
         )
     if len(servers) == 1 and await _store_server(servers[0]):
+        await _try_register_webhook(request)
         return templates.TemplateResponse(
             request, "_plex_link.html", {"state": "linked", "server_name": servers[0].name}
         )
@@ -253,19 +291,29 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
 
 
 @router.post("/plex/server")
-async def plex_choose_server(client_identifier: str = Form(...)) -> RedirectResponse:
+async def plex_choose_server(
+    request: Request, client_identifier: str = Form(...)
+) -> RedirectResponse:
     token = await store.get_setting(constants.PLEX_ACCOUNT_TOKEN)
     client_id = await store.get_setting(constants.PLEX_CLIENT_ID)
     if token and client_id:
         for server in await discover_servers(token, client_id):
             if server.client_identifier == client_identifier:
-                await _store_server(server)
+                if await _store_server(server):
+                    await _try_register_webhook(request)
                 break
     return RedirectResponse(url="/settings", status_code=303)
 
 
 @router.post("/plex/unlink")
 async def plex_unlink() -> RedirectResponse:
+    # Remove monitorr's webhook from Plex first, while we still hold the account token.
+    account = await _plex_account()
+    if account is not None:
+        try:
+            await unregister_webhooks(*account)
+        except Exception:
+            logger.exception("could not remove Plex webhook on unlink")
     for key in (
         constants.PLEX_ACCOUNT_TOKEN,
         constants.PLEX_SERVER_URI,
@@ -301,10 +349,41 @@ async def trigger_sync() -> RedirectResponse:
 
 
 @router.post("/webhook/regenerate")
-async def webhook_regenerate() -> RedirectResponse:
+async def webhook_regenerate(request: Request) -> RedirectResponse:
     # Pinned by env var → nothing to rotate from the UI.
-    if not get_settings().webhook_secret:
-        await regenerate_webhook_secret()
+    if get_settings().webhook_secret:
+        return RedirectResponse(url="/settings", status_code=303)
+    await regenerate_webhook_secret()
+    # If the webhook was registered in Plex, swap the stale URL for the new one.
+    account = await _plex_account()
+    if account is not None:
+        secret = await get_or_create_webhook_secret()
+        try:
+            await resync_webhook(*account, _webhook_url(request, secret))
+        except Exception:
+            logger.exception("could not re-register Plex webhook after regenerate")
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@router.post("/webhook/register")
+async def webhook_register(webhook_url: str = Form(...)) -> RedirectResponse:
+    account = await _plex_account()
+    if account is not None:
+        try:
+            await register_webhook(*account, webhook_url.strip())
+        except Exception:
+            logger.exception("could not register Plex webhook")
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@router.post("/webhook/unregister")
+async def webhook_unregister() -> RedirectResponse:
+    account = await _plex_account()
+    if account is not None:
+        try:
+            await unregister_webhooks(*account)
+        except Exception:
+            logger.exception("could not remove Plex webhook")
     return RedirectResponse(url="/settings", status_code=303)
 
 

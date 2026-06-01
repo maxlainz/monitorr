@@ -61,9 +61,28 @@ no manual configuration**.
 
 ## `media.scrobble` webhook (optional, lower latency)
 
-Optional improvement for users with **Plex Pass**. It's not automated with the login: the user
-copies the webhook URL into Plex (Settings → Webhooks). The endpoint is `POST
+Optional improvement for users with **Plex Pass**. The inbound endpoint is `POST
 /webhook/plex/{secret}` ([`web/routes.py`](../src/monitorr/web/routes.py) `plex_webhook`).
+
+**Auto-configuration in Plex (on link).** monitorr registers this URL in Plex for the user via
+the **account-level webhooks API** — no manual paste needed:
+
+- `GET https://plex.tv/api/v2/user/webhooks` lists the URLs; `POST` to the same endpoint with form
+  body `urls[]=<u>` **replaces the whole list** (`urls=` clears it). Auth: the **account** token
+  (`X-Plex-Token`) + `X-Plex-Client-Identifier` + `X-Plex-Product`. See
+  [`client.py`](../src/monitorr/plex/client.py) (`list_account_webhooks`, `set_account_webhooks`).
+- The list is **account-wide and shared** with other integrations (Home Assistant, etc.), so
+  monitorr never clobbers it: **GET → drop monitorr's own entries → append → POST** the full set.
+  "Ours" = any URL whose path contains `/webhook/plex/`. See
+  [`webhook.py`](../src/monitorr/plex/webhook.py) (`register_webhook`, `unregister_webhooks`,
+  `resync_webhook`, `is_webhook_registered`).
+- **When**: best-effort right after a server is stored on link (`_try_register_webhook` in
+  [`web/routes.py`](../src/monitorr/web/routes.py)); a Settings button re-registers/removes it;
+  Regenerate re-syncs only if already registered; Unlink removes monitorr's entry.
+- **Caveats**: webhooks only **fire** for Plex Pass accounts (polling stays the always-on primary,
+  so registration never blocks login). The webhook is sent by the **PMS** to the URL, so it must be
+  reachable from the server — monitorr defaults to `request.base_url` (how the browser reached it)
+  and the Settings field is **editable** to fix it (e.g. localhost / reverse proxy).
 
 - **Secret**: auto-generated (`secrets.token_urlsafe`) and stored in SQLite
   (`constants.WEBHOOK_SECRET`); `get_or_create_webhook_secret()` in

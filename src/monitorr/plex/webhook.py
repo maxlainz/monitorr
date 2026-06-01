@@ -12,6 +12,10 @@ from pydantic import BaseModel
 
 from monitorr import constants, store
 from monitorr.config import get_settings
+from monitorr.plex import client
+
+# Marker identifying monitorr's own entries in the shared, account-level webhook list.
+MONITORR_WEBHOOK_PATH = "/webhook/plex/"
 
 
 class ScrobbleEvent(BaseModel):
@@ -65,3 +69,50 @@ async def regenerate_webhook_secret() -> str:
     new = generate_webhook_secret()
     await store.set_setting(constants.WEBHOOK_SECRET, new)
     return new
+
+
+# --- account-level registration in Plex (auto-configure the webhook) ---
+
+
+def _is_monitorr(url: str) -> bool:
+    return MONITORR_WEBHOOK_PATH in url
+
+
+async def register_webhook(account_token: str, client_id: str, url: str) -> None:
+    """Adds `url` to the account webhook list, replacing any previous monitorr entry.
+
+    Account webhooks are shared with other integrations, so we keep everyone else's URLs and
+    only swap out monitorr's own (a rotated secret/host is replaced, not duplicated).
+    """
+    others = [
+        existing
+        for existing in await client.list_account_webhooks(account_token, client_id)
+        if not _is_monitorr(existing)
+    ]
+    await client.set_account_webhooks(account_token, client_id, [*others, url])
+
+
+async def unregister_webhooks(account_token: str, client_id: str) -> None:
+    """Removes monitorr's entries from the account webhook list, preserving the rest."""
+    current = await client.list_account_webhooks(account_token, client_id)
+    others = [url for url in current if not _is_monitorr(url)]
+    if others != current:
+        await client.set_account_webhooks(account_token, client_id, others)
+
+
+async def resync_webhook(account_token: str, client_id: str, url: str) -> bool:
+    """Replaces monitorr's entry with `url` only if one already exists (e.g. after a rotation).
+
+    Leaves Plex untouched when monitorr isn't registered, so rotating the secret never
+    silently opts a user into the webhook.
+    """
+    current = await client.list_account_webhooks(account_token, client_id)
+    others = [u for u in current if not _is_monitorr(u)]
+    if others == current:
+        return False
+    await client.set_account_webhooks(account_token, client_id, [*others, url])
+    return True
+
+
+async def is_webhook_registered(account_token: str, client_id: str, url: str) -> bool:
+    return url in await client.list_account_webhooks(account_token, client_id)
