@@ -142,7 +142,13 @@ transient indexer outage where the search at monitor-time found nothing. It is g
 
 - **Single global**: one policy (GET, KEEP, Always-Have, grace, auto-normalize) for all
   shows + the dry-run switch.
-- **Per-series override**: manual settings that replace the global policy on specific shows.
+- **Per-series override**: per show you can (a) **enable/disable** monitorr and (b) edit a **full
+  policy** that replaces the global one for that show, both from the Web UI (the `/series/{tvdb_id}`
+  page). The override is stored as a **complete snapshot** in `series_override.policy_json` and
+  `effective_policy()` merges it over the global (full replaces base), so later global changes don't
+  leak into an overridden show until you **Reset to global** (clears `policy_json`, keeps the
+  enabled flag). Toggling enable/disable **preserves** the policy override. Scope = the 11 `Policy`
+  fields only; `dry_run`, the watched threshold and the user filter stay global.
 
 ## Seasons unit (semantics)
 

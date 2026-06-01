@@ -6,6 +6,7 @@ import respx
 from fastapi.testclient import TestClient
 
 from monitorr import constants, store
+from monitorr.engine.policy import effective_policy, get_global_policy
 from monitorr.main import app
 from monitorr.plex.webhook import get_or_create_webhook_secret, parse_scrobble
 from monitorr.web import routes
@@ -127,3 +128,57 @@ def test_save_policy_clamps_negative_counts() -> None:
         assert page.status_code == 200
         assert 'name="get_count" min="0" value="0"' in page.text
         assert 'name="keep_count" min="0" value="0"' in page.text
+
+
+def test_series_detail_renders_without_sonarr() -> None:
+    # No Sonarr configured: the page still renders, pre-filled with the global policy.
+    with TestClient(app) as client:
+        page = client.get("/series/12345")
+        assert page.status_code == 200
+        assert "TVDB 12345" in page.text
+        assert 'name="keep_count"' in page.text
+
+
+async def test_series_policy_save_persists_and_merges() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/series/12345/policy",
+            data={"get_count": "2", "keep_count": "3", "always_have": "S01E01"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    override = await store.get_override(12345)
+    assert override is not None
+    assert override.policy_json is not None
+    policy, enabled = await effective_policy(12345)
+    assert enabled is True
+    assert (policy.get_count, policy.keep_count) == (2, 3)
+
+
+async def test_series_policy_reset_follows_global() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/series/12345/policy", data={"keep_count": "7"})
+        resp = await client.post("/series/12345/policy/reset", follow_redirects=False)
+    assert resp.status_code == 303
+    override = await store.get_override(12345)
+    assert override is not None
+    assert override.policy_json is None
+    policy, _ = await effective_policy(12345)
+    assert policy.keep_count == (await get_global_policy()).keep_count
+
+
+async def test_toggle_enabled_preserves_policy_override() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/series/12345/policy", data={"keep_count": "5"})
+        # Empty form = checkbox unchecked = disabled; must NOT wipe the stored policy.
+        await client.post("/series/12345/override", data={})
+    override = await store.get_override(12345)
+    assert override is not None
+    assert override.enabled is False
+    assert override.policy_json is not None
+    policy, enabled = await effective_policy(12345)
+    assert enabled is False
+    assert policy.keep_count == 5

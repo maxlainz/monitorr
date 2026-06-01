@@ -104,51 +104,7 @@
 <article>
   <header><strong>Global policy</strong></header>
   <form method="post" action="/settings/policy">
-    <div class="grid">
-      <label>GET (ahead)
-        <input type="number" name="get_count" min="0" value="{{ policy.get_count }}" />
-      </label>
-      <label>GET unit
-        <select name="get_unit">
-          <option value="episodes" {% if policy.get_unit == "episodes" %}selected{% endif %}>episodes</option>
-          <option value="seasons" {% if policy.get_unit == "seasons" %}selected{% endif %}>seasons</option>
-        </select>
-      </label>
-      <label>KEEP (behind)
-        <input type="number" name="keep_count" min="0" value="{{ policy.keep_count }}" />
-      </label>
-      <label>KEEP unit
-        <select name="keep_unit">
-          <option value="episodes" {% if policy.keep_unit == "episodes" %}selected{% endif %}>episodes</option>
-          <option value="seasons" {% if policy.keep_unit == "seasons" %}selected{% endif %}>seasons</option>
-        </select>
-      </label>
-    </div>
-
-    <label>Always-Have (protect; e.g. <code>S01E01 S*E01</code>)
-      <input type="text" name="always_have" value="{{ policy.always_have|join(' ') }}" />
-    </label>
-
-    <div class="grid">
-      <label>Grace watched (days)
-        <input type="number" name="grace_watched_days" min="0" value="{{ policy.grace_watched_days if policy.grace_watched_days is not none else '' }}" />
-      </label>
-      <label>Grace unwatched (days)
-        <input type="number" name="grace_unwatched_days" min="0" value="{{ policy.grace_unwatched_days if policy.grace_unwatched_days is not none else '' }}" />
-      </label>
-      <label>Dormant (days)
-        <input type="number" name="dormant_days" min="0" value="{{ policy.dormant_days if policy.dormant_days is not none else '' }}" />
-      </label>
-      <label>Completed (days)
-        <input type="number" name="grace_completed_days" min="0" value="{{ policy.grace_completed_days if policy.grace_completed_days is not none else '' }}" />
-      </label>
-    </div>
-    <small>
-      <strong>Completed</strong>: when you've watched the last aired episode and the show has been
-      inactive this many days (finished or on hiatus), purge it (except Always-Have). Unlike
-      <strong>Dormant</strong>, it never deletes aired episodes you haven't watched yet. GET re-arms
-      on the next sync when a new season airs. Leave empty to disable.
-    </small>
+    {% include "_policy_fields.html" %}
 
     <label>"Watched" threshold (0–1)
       <input type="number" name="watched_threshold" step="0.05" min="0" max="1" value="{{ watched_threshold }}" />
@@ -158,14 +114,6 @@
       <input type="text" name="user_filter" value="{{ user_filter }}" />
     </label>
 
-    <label>
-      <input type="checkbox" name="search_on_get" {% if policy.search_on_get %}checked{% endif %} />
-      Search in Sonarr when monitoring ahead
-    </label>
-    <label>
-      <input type="checkbox" name="auto_normalize" {% if policy.auto_normalize %}checked{% endif %} />
-      Auto-normalize shows without viewing to pilot (set-and-forget)
-    </label>
     <label>
       <input type="checkbox" name="dry_run" {% if dry_run %}checked{% endif %} />
       Dry-run mode (simulates deletions, doesn't delete)

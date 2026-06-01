@@ -8,14 +8,16 @@
 {% elif not series %}
 <p>Sonarr returned no shows.</p>
 {% else %}
-<p>Disable monitorr for a specific show (override). The global policy applies to the rest.</p>
+<p>Toggle monitorr per show, or edit its policy (overriding the global one). Shows without an
+override follow the global policy.</p>
 <table>
-  <thead><tr><th>Show</th><th>TVDB</th><th>monitorr</th></tr></thead>
+  <thead><tr><th>Show</th><th>TVDB</th><th>Policy</th><th>monitorr</th><th></th></tr></thead>
   <tbody>
     {% for s in series %}
     <tr>
       <td>{{ s.title }}</td>
       <td>{{ s.tvdb_id }}</td>
+      <td>{% if s.custom %}custom{% else %}global{% endif %}</td>
       <td>
         <form method="post" action="/series/{{ s.tvdb_id }}/override">
           <label>
@@ -25,6 +27,7 @@
           </label>
         </form>
       </td>
+      <td><a href="/series/{{ s.tvdb_id }}" role="button" class="secondary outline">Edit</a></td>
     </tr>
     {% endfor %}
   </tbody>

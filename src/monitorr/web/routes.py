@@ -13,6 +13,7 @@ from monitorr import __version__, constants, store, sync
 from monitorr.config import get_settings
 from monitorr.engine.policy import (
     Policy,
+    effective_policy,
     get_dry_run,
     get_global_policy,
     get_user_filter,
@@ -151,10 +152,16 @@ async def series_page(request: Request) -> HTMLResponse:
     cfg = await sonarr.get_config()
     series_rows: list[dict[str, Any]] = []
     if cfg is not None:
-        overrides = {o.tvdb_id: o.enabled for o in await store.list_overrides()}
+        overrides = {o.tvdb_id: o for o in await store.list_overrides()}
         for s in await sonarr.list_series(*cfg):
+            override = overrides.get(s.tvdb_id)
             series_rows.append(
-                {"tvdb_id": s.tvdb_id, "title": s.title, "enabled": overrides.get(s.tvdb_id, True)}
+                {
+                    "tvdb_id": s.tvdb_id,
+                    "title": s.title,
+                    "enabled": override.enabled if override else True,
+                    "custom": override is not None and override.policy_json is not None,
+                }
             )
     return templates.TemplateResponse(
         request, "series.html", {"series": series_rows, "configured": cfg is not None}
@@ -193,6 +200,44 @@ async def test_sonarr(
 # --- settings: policy ---
 
 
+def _split(value: str) -> list[str]:
+    return [item.strip() for item in value.replace(",", " ").split() if item.strip()]
+
+
+def _policy_from_form(
+    get_count: int,
+    get_unit: str,
+    keep_count: int,
+    keep_unit: str,
+    always_have: str,
+    grace_watched_days: str,
+    grace_unwatched_days: str,
+    dormant_days: str,
+    grace_completed_days: str,
+    search_on_get: str | None,
+    auto_normalize: str | None,
+) -> Policy:
+    """Build a Policy from the shared form fields (global and per-series forms)."""
+
+    def _opt_int(value: str) -> int | None:
+        value = value.strip()
+        return int(value) if value else None
+
+    return Policy(
+        get_count=max(0, get_count),
+        get_unit="seasons" if get_unit == "seasons" else "episodes",
+        keep_count=max(0, keep_count),
+        keep_unit="seasons" if keep_unit == "seasons" else "episodes",
+        always_have=_split(always_have) or ["S01E01"],
+        grace_watched_days=_opt_int(grace_watched_days),
+        grace_unwatched_days=_opt_int(grace_unwatched_days),
+        dormant_days=_opt_int(dormant_days),
+        grace_completed_days=_opt_int(grace_completed_days),
+        search_on_get=search_on_get is not None,
+        auto_normalize=auto_normalize is not None,
+    )
+
+
 @router.post("/settings/policy")
 async def save_policy(
     get_count: int = Form(1),
@@ -210,25 +255,18 @@ async def save_policy(
     user_filter: str = Form(""),
     dry_run: str | None = Form(None),
 ) -> RedirectResponse:
-    def _opt_int(value: str) -> int | None:
-        value = value.strip()
-        return int(value) if value else None
-
-    def _split(value: str) -> list[str]:
-        return [item.strip() for item in value.replace(",", " ").split() if item.strip()]
-
-    policy = Policy(
-        get_count=max(0, get_count),
-        get_unit="seasons" if get_unit == "seasons" else "episodes",
-        keep_count=max(0, keep_count),
-        keep_unit="seasons" if keep_unit == "seasons" else "episodes",
-        always_have=_split(always_have) or ["S01E01"],
-        grace_watched_days=_opt_int(grace_watched_days),
-        grace_unwatched_days=_opt_int(grace_unwatched_days),
-        dormant_days=_opt_int(dormant_days),
-        grace_completed_days=_opt_int(grace_completed_days),
-        search_on_get=search_on_get is not None,
-        auto_normalize=auto_normalize is not None,
+    policy = _policy_from_form(
+        get_count,
+        get_unit,
+        keep_count,
+        keep_unit,
+        always_have,
+        grace_watched_days,
+        grace_unwatched_days,
+        dormant_days,
+        grace_completed_days,
+        search_on_get,
+        auto_normalize,
     )
     await set_global_policy(policy)
     await set_dry_run(dry_run is not None)
@@ -327,10 +365,78 @@ async def plex_unlink() -> RedirectResponse:
 # --- per-series override ---
 
 
+@router.get("/series/{tvdb_id}", response_class=HTMLResponse)
+async def series_detail(request: Request, tvdb_id: int) -> HTMLResponse:
+    cfg = await sonarr.get_config()
+    title: str | None = None
+    if cfg is not None:
+        series = await sonarr.find_series_by_tvdb(*cfg, tvdb_id)
+        title = series.title if series else None
+    override = await store.get_override(tvdb_id)
+    policy, enabled = await effective_policy(tvdb_id)
+    return templates.TemplateResponse(
+        request,
+        "series_detail.html",
+        {
+            "tvdb_id": tvdb_id,
+            "title": title,
+            "policy": policy,
+            "enabled": enabled,
+            "override_active": override is not None and override.policy_json is not None,
+        },
+    )
+
+
 @router.post("/series/{tvdb_id}/override")
 async def series_override(tvdb_id: int, enabled: str | None = Form(None)) -> RedirectResponse:
-    await store.set_override(tvdb_id, enabled is not None, None)
+    # Preserve any per-series policy override; only flip the enabled flag.
+    existing = await store.get_override(tvdb_id)
+    policy_json = existing.policy_json if existing else None
+    await store.set_override(tvdb_id, enabled is not None, policy_json)
     return RedirectResponse(url="/series", status_code=303)
+
+
+@router.post("/series/{tvdb_id}/policy")
+async def save_series_policy(
+    tvdb_id: int,
+    get_count: int = Form(1),
+    get_unit: str = Form("episodes"),
+    keep_count: int = Form(1),
+    keep_unit: str = Form("episodes"),
+    always_have: str = Form(""),
+    grace_watched_days: str = Form(""),
+    grace_unwatched_days: str = Form(""),
+    dormant_days: str = Form(""),
+    grace_completed_days: str = Form(""),
+    search_on_get: str | None = Form(None),
+    auto_normalize: str | None = Form(None),
+) -> RedirectResponse:
+    policy = _policy_from_form(
+        get_count,
+        get_unit,
+        keep_count,
+        keep_unit,
+        always_have,
+        grace_watched_days,
+        grace_unwatched_days,
+        dormant_days,
+        grace_completed_days,
+        search_on_get,
+        auto_normalize,
+    )
+    existing = await store.get_override(tvdb_id)
+    enabled = existing.enabled if existing else True
+    await store.set_override(tvdb_id, enabled, policy.model_dump_json())
+    return RedirectResponse(url=f"/series/{tvdb_id}", status_code=303)
+
+
+@router.post("/series/{tvdb_id}/policy/reset")
+async def reset_series_policy(tvdb_id: int) -> RedirectResponse:
+    # Drop the per-series policy (follow the global one again); keep the enabled flag.
+    existing = await store.get_override(tvdb_id)
+    enabled = existing.enabled if existing else True
+    await store.set_override(tvdb_id, enabled, None)
+    return RedirectResponse(url=f"/series/{tvdb_id}", status_code=303)
 
 
 # --- sync ---
