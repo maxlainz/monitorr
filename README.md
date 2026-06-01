@@ -27,6 +27,9 @@ actually watching.
   anything in Sonarr until you explicitly disable it. Try it without fear.
 - **Live detection + reconciliation** — Plex session polling (with optional `media.scrobble`
   webhook) and a periodic sync that reconciles the watched state.
+- **Back-catalog aware (retroactive)** — add a show you already watched in Plex (e.g. a new
+  season is dropping) and the sync reads your Plex watch history and jumps the window straight
+  to your **last watched episode** — it doesn't re-download the series from the pilot.
 - **Login with Plex** — PIN/OAuth linking and automatic server discovery.
 - **Global config + per-series overrides**, editable from the Web UI.
 - **Single multi-arch image** (amd64/arm64), SQLite, no external services.
@@ -41,7 +44,9 @@ Plex (session poll / webhook)  ──►  TVDB correlation  ──►  Sonarr (A
 When you finish (or nearly finish) an episode, monitorr recomputes that show's window: it
 monitors and searches for what's missing ahead, and marks for deletion what's surplus behind
 (respecting Always-Have and the grace periods). A periodic sync reconciles everything in case
-an event was missed.
+an event was missed — and it reads your **existing** Plex watch history, so a show you watched
+before installing monitorr (or added afterwards) is handled from your real viewing point, not
+from scratch.
 
 > _(Web UI screenshot pending.)_
 

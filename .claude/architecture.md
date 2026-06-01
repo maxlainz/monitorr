@@ -54,9 +54,11 @@ Organized by domain (not by layer):
    easily; login avoids pasting it by hand and allows discovering the server.
 3. **Detection via primary polling + optional webhook**. *Why*: polling works with only
    the login token (no Plex Pass or manual setup); the webhook gives lower latency to
-   those who have Plex Pass. The webhook secret is auto-generated and stored in SQLite (the
-   Settings UI shows the ready-to-copy URL); `MONITORR_WEBHOOK_SECRET` is an optional override.
-   Both paths share `process_watch()` and the same `user_filter`.
+   those who have Plex Pass. The webhook secret is auto-generated and stored in SQLite;
+   `MONITORR_WEBHOOK_SECRET` is an optional override. On link, monitorr **auto-registers** its
+   webhook URL in Plex via the account-level webhooks API (best-effort, never clobbering other
+   integrations' URLs); a Settings button re-registers/removes it. Both paths share
+   `process_watch()` and the same `user_filter`. See [`plex.md`](plex.md).
 4. **"Watched" trigger at ~90%**. *Why*: it matches the real end of the episode (scrobble) and
    is reproducible by polling with `viewOffset/duration`.
 5. **Combined deletion: count + grace**. *Why*: the count is predictable and grace covers

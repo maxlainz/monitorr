@@ -23,28 +23,62 @@
     Lower-latency detection for <strong>Plex Pass</strong> users. It complements the always-on
     session poller — you don't need it, but it triggers the moment Plex marks an episode watched.
   </p>
-  <label>Webhook URL
-    <input type="text" id="webhook-url" value="{{ webhook_url }}" readonly />
-  </label>
-  <div class="grid">
+  {% if plex.linked %}
+    <p>
+      {% if webhook_registered is none %}
+        <small>❔ Couldn't read the registration status from Plex.</small>
+      {% elif webhook_registered %}
+        <small>✅ Registered in your Plex account.</small>
+      {% else %}
+        <small>⚠️ Not registered yet — use the button below.</small>
+      {% endif %}
+    </p>
+    <form method="post" action="/webhook/register">
+      <label>Webhook URL
+        <input type="text" id="webhook-url" name="webhook_url" value="{{ webhook_url }}" />
+      </label>
+      <div class="grid">
+        <button type="submit">Register / Update in Plex</button>
+        <button type="button" class="secondary"
+                onclick="navigator.clipboard.writeText(document.getElementById('webhook-url').value);this.textContent='Copied!'">
+          Copy URL
+        </button>
+      </div>
+    </form>
+    <div class="grid">
+      {% if webhook_registered %}
+        <form method="post" action="/webhook/unregister">
+          <button type="submit" class="secondary outline">Remove from Plex</button>
+        </form>
+      {% endif %}
+      {% if webhook_pinned_by_env %}
+        <small>🔒 Pinned by <code>MONITORR_WEBHOOK_SECRET</code></small>
+      {% else %}
+        <form method="post" action="/webhook/regenerate"
+              onsubmit="return confirm('Generate a new secret? The current URL will stop working.')">
+          <button type="submit" class="secondary outline">Regenerate</button>
+        </form>
+      {% endif %}
+    </div>
+    <small>
+      monitorr registers this automatically on link; the button re-syncs it. Plex's server must be
+      able to reach the host above — it reflects how you reached this page, so edit it if Plex
+      reaches monitorr through a different host or reverse proxy. Or paste it manually in Plex:
+      <strong>Settings → Webhooks → Add Webhook</strong>.
+    </small>
+  {% else %}
+    <label>Webhook URL
+      <input type="text" id="webhook-url" value="{{ webhook_url }}" readonly />
+    </label>
     <button type="button" class="secondary"
             onclick="navigator.clipboard.writeText(document.getElementById('webhook-url').value);this.textContent='Copied!'">
       Copy URL
     </button>
-    {% if webhook_pinned_by_env %}
-      <small>🔒 Pinned by <code>MONITORR_WEBHOOK_SECRET</code></small>
-    {% else %}
-      <form method="post" action="/webhook/regenerate"
-            onsubmit="return confirm('Generate a new secret? The current URL will stop working.')">
-        <button type="submit" class="secondary outline">Regenerate</button>
-      </form>
-    {% endif %}
-  </div>
-  <small>
-    In Plex: <strong>Settings → Webhooks → Add Webhook</strong>, paste this URL.
-    The host above reflects how you reached this page; adjust it if Plex reaches monitorr through
-    a different host or reverse proxy.
-  </small>
+    <small>
+      Link Plex above to register this automatically, or paste it manually in Plex:
+      <strong>Settings → Webhooks → Add Webhook</strong>.
+    </small>
+  {% endif %}
 </article>
 
 <article>

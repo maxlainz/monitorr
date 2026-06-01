@@ -121,8 +121,13 @@ monitorr). Without unmonitoring first, Sonarr would import the already-started d
 Live detection (poller + webhook) only triggers when an episode is watched. The **sync** reconciles the
 watched state by reading the Plex library (see [`plex.md`](plex.md)): for each show managed by
 Sonarr, it records the watched episodes with their real date (feeds the grace periods) and applies the
-window for the **last watched**. It covers three cases the live mode doesn't see: shows already started at
-install, episodes marked by hand in Plex, and viewing with monitorr off. It also **normalizes
+window for the **last watched**. It covers the cases the live mode doesn't see: shows already started at
+install, episodes marked by hand in Plex, and viewing with monitorr off. **Retroactive (back-catalog):**
+because it applies the window for the last watched, a previously-watched show **added later** (e.g. when a
+new season drops) **jumps straight to your last watched episode** — it monitors/searches the GET window
+ahead of that point and never re-downloads the series from the pilot. The detection is from Plex's reported
+watch state, not from disk/Sonarr (see the pitfall in [`plex.md`](plex.md)); if Plex reports **no** viewing
+the show is **normalized to pilot** instead. It also **normalizes
 to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normalize-to-pilot)). It's
 triggered by the "Sync now" button, on startup (once) and periodically. It inherits the engine's
 dry-run.

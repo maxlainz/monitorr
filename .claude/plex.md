@@ -61,9 +61,28 @@ no manual configuration**.
 
 ## `media.scrobble` webhook (optional, lower latency)
 
-Optional improvement for users with **Plex Pass**. It's not automated with the login: the user
-copies the webhook URL into Plex (Settings → Webhooks). The endpoint is `POST
+Optional improvement for users with **Plex Pass**. The inbound endpoint is `POST
 /webhook/plex/{secret}` ([`web/routes.py`](../src/monitorr/web/routes.py) `plex_webhook`).
+
+**Auto-configuration in Plex (on link).** monitorr registers this URL in Plex for the user via
+the **account-level webhooks API** — no manual paste needed:
+
+- `GET https://plex.tv/api/v2/user/webhooks` lists the URLs; `POST` to the same endpoint with form
+  body `urls[]=<u>` **replaces the whole list** (`urls=` clears it). Auth: the **account** token
+  (`X-Plex-Token`) + `X-Plex-Client-Identifier` + `X-Plex-Product`. See
+  [`client.py`](../src/monitorr/plex/client.py) (`list_account_webhooks`, `set_account_webhooks`).
+- The list is **account-wide and shared** with other integrations (Home Assistant, etc.), so
+  monitorr never clobbers it: **GET → drop monitorr's own entries → append → POST** the full set.
+  "Ours" = any URL whose path contains `/webhook/plex/`. See
+  [`webhook.py`](../src/monitorr/plex/webhook.py) (`register_webhook`, `unregister_webhooks`,
+  `resync_webhook`, `is_webhook_registered`).
+- **When**: best-effort right after a server is stored on link (`_try_register_webhook` in
+  [`web/routes.py`](../src/monitorr/web/routes.py)); a Settings button re-registers/removes it;
+  Regenerate re-syncs only if already registered; Unlink removes monitorr's entry.
+- **Caveats**: webhooks only **fire** for Plex Pass accounts (polling stays the always-on primary,
+  so registration never blocks login). The webhook is sent by the **PMS** to the URL, so it must be
+  reachable from the server — monitorr defaults to `request.base_url` (how the browser reached it)
+  and the Settings field is **editable** to fix it (e.g. localhost / reverse proxy).
 
 - **Secret**: auto-generated (`secrets.token_urlsafe`) and stored in SQLite
   (`constants.WEBHOOK_SECRET`); `get_or_create_webhook_secret()` in
@@ -102,6 +121,12 @@ waiting for a playback, by traversing the library:
   `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`; the anchor is the
   maximum `(season, episode)` watched, and `lastViewedAt` seeds the real date for the grace periods.
 
+This is the **retroactive** path: monitorr trusts Plex's reported watch state, not disk/Sonarr.
+Plex keeps `viewCount`/`lastViewedAt` on the **episode metadata**, so episodes you watched long
+ago still report as watched after their files were deleted — that's what lets the sync jump the
+window to the last watched of a show **added (or re-added) after** you'd already watched it,
+without re-downloading from the pilot (see [`behavior.md`](behavior.md)).
+
 ## Pitfalls
 
 - **The PIN expires fast**: don't reuse an old `id`; regenerate if the polling doesn't resolve.
@@ -111,3 +136,7 @@ waiting for a playback, by traversing the library:
 - **Relay is slow**: if there's only a relay connection, polling and metadata run with latency.
 - **External IDs at the episode level** are not reliable; the show's TVDB + season/episode
   numbers is enough to correlate.
+- **Removing a series from the Plex library wipes its watch history** there: the next
+  [sync](behavior.md) sees no viewing and falls back to **normalize-to-pilot** instead of the
+  retroactive jump. So to keep the back-catalog behaviour, keep the series in Plex (its
+  `viewCount` survives file deletion); don't delete and re-add it fresh.

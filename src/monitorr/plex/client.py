@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from monitorr import constants, store
 
 _RESOURCES_URL = "https://plex.tv/api/v2/resources"
+_WEBHOOKS_URL = "https://plex.tv/api/v2/user/webhooks"
 _TIMEOUT = 30.0
 _TVDB_GUID = re.compile(r"tvdb://(\d+)")
 
@@ -102,6 +103,36 @@ async def discover_servers(account_token: str, client_id: str) -> list[PlexServe
                 )
             )
         return servers
+
+
+def _webhook_headers(account_token: str, client_id: str) -> dict[str, str]:
+    return {**_headers(account_token, client_id), "X-Plex-Product": constants.PLEX_PRODUCT}
+
+
+async def list_account_webhooks(account_token: str, client_id: str) -> list[str]:
+    """The account's configured webhook URLs (account-level, shared with other integrations)."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(
+            _WEBHOOKS_URL, headers=_webhook_headers(account_token, client_id)
+        )
+        response.raise_for_status()
+        data = response.json()
+    urls: list[str] = []
+    for item in data if isinstance(data, list) else []:
+        url = item.get("url") if isinstance(item, dict) else item
+        if url:
+            urls.append(str(url))
+    return urls
+
+
+async def set_account_webhooks(account_token: str, client_id: str, urls: list[str]) -> None:
+    """Replaces the whole account webhook list (POST is destructive; pass the full set)."""
+    data = {"urls[]": urls} if urls else {"urls": ""}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.post(
+            _WEBHOOKS_URL, data=data, headers=_webhook_headers(account_token, client_id)
+        )
+        response.raise_for_status()
 
 
 def choose_connection(connections: list[PlexConnection]) -> str | None:
