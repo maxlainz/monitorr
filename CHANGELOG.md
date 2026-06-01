@@ -4,6 +4,17 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.2.1] - 2026-06-01
+
+### Fixed
+
+- **Grace deleted episodes inside the KEEP window**: the `watched`/`unwatched` grace periods
+  ignored KEEP, so with *keep 1 season behind* an episode of the season you were actively watching
+  could still be removed once it aged past the grace days. KEEP is now a **retention floor** for
+  both ongoing trims — computed relative to your latest watched episode — so they only delete what
+  already falls outside KEEP. The bulk purges (`completed`/`dormant`) intentionally still ignore
+  KEEP, and Always-Have remains the only protection over every deletion path.
+
 ## [1.2.0] - 2026-05-31
 
 ### Added
@@ -89,6 +100,7 @@ First public release. monitorr watches viewing in Plex and manages episodes in S
 - **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
   automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
+[1.2.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.2.1
 [1.2.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.2.0
 [1.1.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.1.0
 [1.0.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.0.1
