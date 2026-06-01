@@ -121,6 +121,12 @@ waiting for a playback, by traversing the library:
   `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`; the anchor is the
   maximum `(season, episode)` watched, and `lastViewedAt` seeds the real date for the grace periods.
 
+This is the **retroactive** path: monitorr trusts Plex's reported watch state, not disk/Sonarr.
+Plex keeps `viewCount`/`lastViewedAt` on the **episode metadata**, so episodes you watched long
+ago still report as watched after their files were deleted — that's what lets the sync jump the
+window to the last watched of a show **added (or re-added) after** you'd already watched it,
+without re-downloading from the pilot (see [`behavior.md`](behavior.md)).
+
 ## Pitfalls
 
 - **The PIN expires fast**: don't reuse an old `id`; regenerate if the polling doesn't resolve.
@@ -130,3 +136,7 @@ waiting for a playback, by traversing the library:
 - **Relay is slow**: if there's only a relay connection, polling and metadata run with latency.
 - **External IDs at the episode level** are not reliable; the show's TVDB + season/episode
   numbers is enough to correlate.
+- **Removing a series from the Plex library wipes its watch history** there: the next
+  [sync](behavior.md) sees no viewing and falls back to **normalize-to-pilot** instead of the
+  retroactive jump. So to keep the back-catalog behaviour, keep the series in Plex (its
+  `viewCount` survives file deletion); don't delete and re-add it fresh.
