@@ -155,3 +155,89 @@ async def test_completed_disabled_when_unset() -> None:
     await sweep()
 
     assert await store.list_deletions(dry_run=True) == []
+
+
+async def _use_policy(policy: Policy) -> None:
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(policy)
+
+
+@respx.mock
+async def test_watched_respects_keep_seasons_floor() -> None:
+    # KEEP 1 season behind must protect the whole season being watched from the watched grace.
+    episodes = [_ep(1, n, has_file=True) for n in range(1, 4)]
+    episodes += [_ep(2, n, has_file=True) for n in range(1, 4)]
+    await _use_policy(
+        Policy(
+            keep_unit="seasons",
+            keep_count=1,
+            grace_watched_days=7,
+            grace_unwatched_days=None,
+            dormant_days=None,
+            grace_completed_days=None,
+        )
+    )
+    _mock(episodes)
+    for n in range(1, 4):
+        await _watch(1, n, days_ago=40)
+    await _watch(2, 1, days_ago=40)
+    await _watch(2, 2, days_ago=40)
+    await _watch(2, 3, days_ago=1)  # latest watch → anchor + marker (current season)
+
+    await sweep()
+
+    pending = await store.list_deletions(dry_run=True)
+    # S02 fully protected by the KEEP floor; S01E01 by Always-Have; only old S01E02/E03 trimmed.
+    assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 3)}
+    assert {d.reason for d in pending} == {"grace_watched"}
+
+
+@respx.mock
+async def test_watched_respects_keep_episodes_floor() -> None:
+    episodes = [_ep(1, n, has_file=True) for n in range(1, 7)]
+    await _use_policy(
+        Policy(
+            keep_unit="episodes",
+            keep_count=2,  # protects the anchor + 1 behind (E5, E6)
+            grace_watched_days=7,
+            grace_unwatched_days=None,
+            dormant_days=None,
+            grace_completed_days=None,
+        )
+    )
+    _mock(episodes)
+    for n in range(1, 6):
+        await _watch(1, n, days_ago=40)
+    await _watch(1, 6, days_ago=1)  # anchor + marker
+
+    await sweep()
+
+    pending = await store.list_deletions(dry_run=True)
+    # E5/E6 inside the KEEP window, E1 Always-Have → only E2/E3/E4 trimmed.
+    assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 3), (1, 4)}
+
+
+@respx.mock
+async def test_unwatched_respects_keep_floor() -> None:
+    episodes = [_ep(1, n, has_file=True) for n in range(1, 6)]
+    await _use_policy(
+        Policy(
+            keep_unit="episodes",
+            keep_count=2,
+            grace_watched_days=None,
+            grace_unwatched_days=365,
+            dormant_days=None,
+            grace_completed_days=None,
+        )
+    )
+    _mock(episodes)
+    await _watch(1, 4, days_ago=400)  # anchor; show inactive > 365d → unwatched grace fires
+
+    await sweep()
+
+    pending = await store.list_deletions(dry_run=True)
+    # E3 sits inside the KEEP floor (anchor E4, keep 2) → protected; E1 is the unwatched marker;
+    # E2 and E5 are trimmed.
+    assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 5)}
+    assert {d.reason for d in pending} == {"grace_unwatched"}

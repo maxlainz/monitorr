@@ -70,6 +70,15 @@ They complement KEEP with a temporal criterion (days without activity on the sho
   `apply_window` over the last watched and monitors/searches the new season ahead (this happens via
   sync, not live, because an undownloaded episode can't be played to trigger the live path).
 
+**KEEP is a retention floor for the ongoing trims.** `watched` and `unwatched` never delete what the
+KEEP window guarantees on disk, computed relative to the **latest watched episode** (the viewing
+point): KEEP is the spatial guarantee, these graces only trim what already falls **outside** it. So
+"KEEP 1 season behind" protects the whole season you're currently watching even from `grace_watched`.
+The bulk purges `completed` and `dormant` **intentionally ignore KEEP** — they reclaim everything
+deletable because the show is finished/abandoned (already gated on caught-up/inactivity). The shared
+KEEP predicate lives in `engine/window.py` (`keep_protected_keys`). **Always-Have** remains the only
+protection that overrides *every* deletion path.
+
 Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
 per show/episode (last watched, first unwatched, last activity). They respect Always-Have. Implemented
 in `engine/grace.py`; `completed` is evaluated before `dormant` so a caught-up purge is logged with
