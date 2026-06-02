@@ -4,6 +4,29 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.4.1] - 2026-06-02
+
+### Fixed
+
+- **Back-catalog detection missed viewing of episodes whose files were deleted**: re-adding an
+  already-watched series could re-download an early **whole season** instead of jumping to your
+  last watched episode. The sync detected viewing only from `allLeaves`, which reflects the
+  **current** Plex library — when the files of later seasons had been deleted, Plex dropped those
+  episodes from `allLeaves`, so their viewing was invisible and the window anchored on the highest
+  still-present episode (e.g. mid-S1). The sync now **also reads Plex's play history**
+  (`/status/sessions/history/all`), which persists independently of the files, and unions it with
+  the library state to anchor on the **true last-watched** episode.
+- **Season-pack grabs imported the whole season**: a search for the GET window could make Sonarr
+  grab a full season pack and import every episode (including ones already watched). The window now
+  **cancels from Sonarr's queue** (`removeFromClient=false`, so the client keeps seeding) any
+  episode being downloaded that falls **outside** GET ∪ KEEP ∪ Always-Have, so only the window
+  lands on disk.
+- **Live window slid backward on re-watch / gap-fill**: a `media.scrobble` or polled play
+  recomputed the window around the episode just played, so re-watching or filling an earlier gap of
+  an already-watched show pulled the GET window back and re-downloaded episodes already seen. It now
+  anchors on the **furthest-watched** episode (the maximum recorded watch), consistent with the sync
+  and the grace sweep — advancing slides forward, an earlier play never drags it backward.
+
 ## [1.4.0] - 2026-06-01
 
 ### Added

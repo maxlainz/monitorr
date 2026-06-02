@@ -12,9 +12,13 @@ The engine activates when a show is considered **watched up to episode E** (anch
   (the user finished and the session closed before crossing the threshold).
 - By optional webhook: `media.scrobble` event.
 
-Each trigger recomputes the window of **that show** around E. The trigger is idempotent:
-the poller's debounce uses the key `(sessionKey, season, episode)`, not just `sessionKey`
-(Plex can reuse the `sessionKey` when auto-playing the next episode of a binge, so
+Each trigger records E and recomputes the window of **that show** around the **furthest-watched
+episode** (the maximum recorded watch, including E), consistent with the
+[sync](#sync--reconciliation) and the [grace sweep](#grace-periods-deletion-by-inactivity). So
+advancing an episode slides the window forward, while **re-watching or filling an earlier gap does
+not drag it backward** (which would re-download already-watched episodes). The trigger is
+idempotent: the poller's debounce uses the key `(sessionKey, season, episode)`, not just
+`sessionKey` (Plex can reuse the `sessionKey` when auto-playing the next episode of a binge, so
 advancing an episode triggers, but re-polling the same one doesn't).
 
 ## Window
@@ -26,6 +30,11 @@ Two parameters, configurable in **episodes or seasons**:
   ahead**: anything beyond the window is **deleted** (`episodefile` delete) if it's on
   disk or **unmonitored** if it hasn't been downloaded yet (reason `ahead`), except *Always-Have*.
   It's a sliding window: when advancing an episode the edge is re-monitored/searched.
+  - **Season-pack guard**: searching an episode can make Sonarr grab a **full season pack** and
+    import the whole season. After computing the window, monitorr **cancels from the queue**
+    (`DELETE /queue/{id}` with `removeFromClient=false`, so the client keeps seeding) any episode
+    being downloaded that falls **outside** GET ∪ KEEP ∪ Always-Have — so only the window lands on
+    disk. Already-imported surplus is removed by the trims above.
 - **KEEP (N behind)**: keep on disk the N episodes before E (including E). The
   rest, older than the KEEP window, is **deleted** (`episodefile` delete) and
   **unmonitored** (reason `keep`), unless protected by *Always-Have*.
@@ -119,9 +128,12 @@ monitorr). Without unmonitoring first, Sonarr would import the already-started d
 ## Sync / reconciliation
 
 Live detection (poller + webhook) only triggers when an episode is watched. The **sync** reconciles the
-watched state by reading the Plex library (see [`plex.md`](plex.md)): for each show managed by
-Sonarr, it records the watched episodes with their real date (feeds the grace periods) and applies the
-window for the **last watched**. It covers the cases the live mode doesn't see: shows already started at
+watched state by reading the Plex library **and the play history** (see [`plex.md`](plex.md)): for each
+show managed by Sonarr, it unions the episodes still in the library (`allLeaves`, `viewCount>0`) with the
+**play history** (`/status/sessions/history/all`, which survives file deletion), records them with their
+real date (feeds the grace periods) and applies the window for the **last watched**. Reading the history
+is what keeps the back-catalog jump correct when later seasons were watched but their files were since
+deleted (otherwise the anchor would fall back to an earlier still-present episode and re-download it). It covers the cases the live mode doesn't see: shows already started at
 install, episodes marked by hand in Plex, and viewing with monitorr off. **Retroactive (back-catalog):**
 because it applies the window for the last watched, a previously-watched show **added later** (e.g. when a
 new season drops) **jumps straight to your last watched episode** — it monitors/searches the GET window

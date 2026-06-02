@@ -72,6 +72,9 @@ def _mock_plex(tvdb_id: int) -> respx.Route:
             },
         )
     )
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": []}})
+    )
     return respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
         return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
     )
@@ -159,6 +162,9 @@ async def test_sync_continues_when_one_series_errors() -> None:
         return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
     )
     respx.get(f"{PLEX}/library/metadata/200/allLeaves").mock(return_value=httpx.Response(500))
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": []}})
+    )
     # Both shows managed; 999 goes first so find_series_by_tvdb returns the correct one.
     respx.get("http://sonarr:8989/api/v3/series").mock(
         return_value=httpx.Response(
@@ -186,6 +192,118 @@ async def test_sync_continues_when_one_series_errors() -> None:
     assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {(1, 1), (1, 2)}
     last = await sync.get_last_sync()  # updated despite one show's error
     assert last is not None and last["matched"] == 1
+
+
+@respx.mock
+async def test_sync_anchors_on_history_when_files_deleted() -> None:
+    """Repro: watched S3, then its files were deleted. Plex's allLeaves (current library state)
+    only returns the episodes still on disk (S1E1,E2,E5), but the play history persists S3. The
+    sync must anchor on the real last watched (S3) and search ahead of S3 — never search S1, which
+    would make Sonarr grab the S1 season pack and re-download the whole season."""
+    await _configure_links()  # always_have=[], dry-run ON by default
+    await set_dry_run(False)
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"ratingKey": "100", "title": "X", "Guid": [{"id": f"tvdb://{TVDB}"}]}
+                    ]
+                }
+            },
+        )
+    )
+    # allLeaves: only the on-disk episodes report watched (S1E1, E2, E5).
+    respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"parentIndex": 1, "index": 1, "viewCount": 1, "lastViewedAt": 1700000000},
+                        {"parentIndex": 1, "index": 2, "viewCount": 1, "lastViewedAt": 1700000100},
+                        {"parentIndex": 1, "index": 5, "viewCount": 1, "lastViewedAt": 1700000500},
+                    ]
+                }
+            },
+        )
+    )
+    # Play history: S3 watched (files since deleted, no longer in allLeaves).
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 3,
+                            "index": 2,
+                            "viewedAt": 1710000200,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 3,
+                            "index": 1,
+                            "viewedAt": 1710000100,
+                        },
+                    ]
+                }
+            },
+        )
+    )
+    # Sonarr has S1E1-E8 + S3E1-E3; S1E1,E2,E5 re-downloaded (files), the rest without file.
+    episodes = [
+        {
+            "id": 100 + n,
+            "seasonNumber": 1,
+            "episodeNumber": n,
+            "hasFile": n in (1, 2, 5),
+            "episodeFileId": (200 + n) if n in (1, 2, 5) else 0,
+            "monitored": False,
+        }
+        for n in range(1, 9)
+    ] + [
+        {"id": 300 + n, "seasonNumber": 3, "episodeNumber": n, "hasFile": False, "monitored": False}
+        for n in range(1, 4)
+    ]
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=episodes)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
+
+    summary = await sync.run_sync()
+
+    assert summary["matched"] == 1
+    # Records the union: S1 (still on disk) + S3 (from history).
+    assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {
+        (1, 1),
+        (1, 2),
+        (1, 5),
+        (3, 1),
+        (3, 2),
+    }
+    # Anchor = S3E2 → GET-ahead is S3E3 (id 303); the search targets it, never any S1 episode.
+    searched = {
+        eid for c in command.calls for eid in json.loads(c.request.content).get("episodeIds", [])
+    }
+    assert searched == {303}
 
 
 def _mock_empty_plex() -> None:

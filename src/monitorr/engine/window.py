@@ -141,3 +141,20 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         e.id for e in real if e.id not in ahead_ids and e.monitored and e.id not in deleted_ids
     ]
     await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)
+
+    # Season-pack guard: a search for the GET window can make Sonarr grab a full season pack and
+    # import the whole season (episodes the user already watched). Pull from the queue
+    # (removeFromClient=false → the client keeps seeding) any episode being downloaded that falls
+    # outside the window — GET ∪ KEEP ∪ Always-Have — so only the window is imported. Already-
+    # imported surplus is removed by the trims above; this stops it before it lands on disk.
+    in_window_ids = set(ahead_ids)
+    protected = keep_protected_keys(real, idx, policy)
+    in_window_ids |= {e.id for e in real if (e.season_number, e.episode_number) in protected}
+    in_window_ids |= {
+        e.id
+        for e in real
+        if matches_always_have(policy.always_have, e.season_number, e.episode_number)
+    }
+    queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
+    surplus = [e.id for e in real if e.id in queued and e.id not in in_window_ids]
+    await actions.cancel_downloads(base_url, api_key, surplus, dry_run)

@@ -87,6 +87,37 @@ async def test_near_complete_session_disappearing_counts_as_watched(
     assert captured == [(TVDB, 1, 5)]
 
 
+async def test_process_watch_anchors_on_furthest_watched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Filling an earlier gap (or re-watching) must not pull the window back: it anchors on the
+    maximum recorded watch, not on the episode just played."""
+    anchors: list[tuple[int, int, int]] = []
+
+    async def fake_apply_window(tvdb_id: int, season: int, episode: int) -> None:
+        anchors.append((tvdb_id, season, episode))
+
+    monkeypatch.setattr(poller, "apply_window", fake_apply_window)
+    await store.record_watch(TVDB, 3, 8)  # furthest already watched
+
+    await poller.process_watch(TVDB, 2, 5)  # play an earlier gap
+
+    assert anchors == [(TVDB, 3, 8)]  # anchored on the max, not on (2, 5)
+
+
+async def test_process_watch_advances_to_new_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Advancing to a new highest episode slides the window forward as before."""
+    anchors: list[tuple[int, int, int]] = []
+
+    async def fake_apply_window(tvdb_id: int, season: int, episode: int) -> None:
+        anchors.append((tvdb_id, season, episode))
+
+    monkeypatch.setattr(poller, "apply_window", fake_apply_window)
+    await store.record_watch(TVDB, 1, 1)
+
+    await poller.process_watch(TVDB, 1, 2)
+
+    assert anchors == [(TVDB, 1, 2)]
+
+
 async def test_low_progress_session_disappearing_is_ignored(
     monkeypatch: pytest.MonkeyPatch, captured: list[tuple[int, int, int]]
 ) -> None:
