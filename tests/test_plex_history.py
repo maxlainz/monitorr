@@ -16,12 +16,27 @@ async def test_get_watch_history_parses_and_filters() -> None:
             json={
                 "MediaContainer": {
                     "Metadata": [
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 3, "index": 2, "viewedAt": 1710000200},
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 1, "index": 5, "viewedAt": 1700000500},
-                        {"type": "episode", "grandparentRatingKey": "999",  # other show → ignored
-                         "parentIndex": 9, "index": 9, "viewedAt": 1710000300},
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 3,
+                            "index": 2,
+                            "viewedAt": 1710000200,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 1,
+                            "index": 5,
+                            "viewedAt": 1700000500,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "999",  # other show → ignored
+                            "parentIndex": 9,
+                            "index": 9,
+                            "viewedAt": 1710000300,
+                        },
                         {"type": "movie", "viewedAt": 1710000400},  # not an episode → ignored
                     ]
                 }
@@ -43,10 +58,20 @@ async def test_get_watch_history_keeps_most_recent_view() -> None:
             json={
                 "MediaContainer": {
                     "Metadata": [
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 2, "index": 4, "viewedAt": 1577836800},  # 2020-01-01
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 2, "index": 4, "viewedAt": 1893456000},  # 2030-01-01
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 2,
+                            "index": 4,
+                            "viewedAt": 1577836800,
+                        },  # 2020-01-01
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 2,
+                            "index": 4,
+                            "viewedAt": 1893456000,
+                        },  # 2030-01-01
                     ]
                 }
             },

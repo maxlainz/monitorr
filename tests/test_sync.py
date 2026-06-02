@@ -241,10 +241,20 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
             json={
                 "MediaContainer": {
                     "Metadata": [
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 3, "index": 2, "viewedAt": 1710000200},
-                        {"type": "episode", "grandparentRatingKey": "100",
-                         "parentIndex": 3, "index": 1, "viewedAt": 1710000100},
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 3,
+                            "index": 2,
+                            "viewedAt": 1710000200,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentRatingKey": "100",
+                            "parentIndex": 3,
+                            "index": 1,
+                            "viewedAt": 1710000100,
+                        },
                     ]
                 }
             },
@@ -283,13 +293,15 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
     assert summary["matched"] == 1
     # Records the union: S1 (still on disk) + S3 (from history).
     assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {
-        (1, 1), (1, 2), (1, 5), (3, 1), (3, 2)
+        (1, 1),
+        (1, 2),
+        (1, 5),
+        (3, 1),
+        (3, 2),
     }
     # Anchor = S3E2 → GET-ahead is S3E3 (id 303); the search targets it, never any S1 episode.
     searched = {
-        eid
-        for c in command.calls
-        for eid in json.loads(c.request.content).get("episodeIds", [])
+        eid for c in command.calls for eid in json.loads(c.request.content).get("episodeIds", [])
     }
     assert searched == {303}
 
