@@ -117,15 +117,22 @@ waiting for a playback, by traversing the library:
 - `GET {serverUri}/library/sections` → sections; keep `type=="show"` (TV).
 - `GET {serverUri}/library/sections/{key}/all?type=2&includeGuids=1` → shows with `ratingKey`,
   `title` and `Guid[]` (→ tvdb).
-- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → all episodes with
-  `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`; the anchor is the
-  maximum `(season, episode)` watched, and `lastViewedAt` seeds the real date for the grace periods.
+- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → episodes currently **in the
+  library** with `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`.
+- `GET {serverUri}/status/sessions/history/all?metadataItemID={showRatingKey}` → the show's
+  **play history** (`parentIndex`, `index`, `viewedAt`), which **persists independently of the
+  files**. Paginated and filtered to the show.
+
+monitorr **unions both** sources: the anchor is the maximum `(season, episode)` watched across
+them, and the most recent date seeds the real date for the grace periods.
 
 This is the **retroactive** path: monitorr trusts Plex's reported watch state, not disk/Sonarr.
-Plex keeps `viewCount`/`lastViewedAt` on the **episode metadata**, so episodes you watched long
-ago still report as watched after their files were deleted — that's what lets the sync jump the
-window to the last watched of a show **added (or re-added) after** you'd already watched it,
-without re-downloading from the pilot (see [`behavior.md`](behavior.md)).
+`allLeaves` reflects the **current library**, so episodes whose files were deleted may **disappear
+from it** (depends on the Plex library settings) — their viewing would be invisible and the anchor
+would fall back to an earlier episode still present (which then triggers a re-download, e.g. a
+season-pack grab). The **play history** does not depend on the files, so unioning it recovers the
+true last-watched and lets the sync jump the window to it for a show **added (or re-added) after**
+you'd already watched it, without re-downloading from the pilot (see [`behavior.md`](behavior.md)).
 
 ## Pitfalls
 
@@ -136,7 +143,9 @@ without re-downloading from the pilot (see [`behavior.md`](behavior.md)).
 - **Relay is slow**: if there's only a relay connection, polling and metadata run with latency.
 - **External IDs at the episode level** are not reliable; the show's TVDB + season/episode
   numbers is enough to correlate.
-- **Removing a series from the Plex library wipes its watch history** there: the next
-  [sync](behavior.md) sees no viewing and falls back to **normalize-to-pilot** instead of the
-  retroactive jump. So to keep the back-catalog behaviour, keep the series in Plex (its
-  `viewCount` survives file deletion); don't delete and re-add it fresh.
+- **Deleting files can hide episodes from `allLeaves`**: if the Plex library drops episodes that
+  no longer have a file, their `viewCount` disappears from `allLeaves` and the anchor would fall
+  back to an earlier, still-present episode. monitorr mitigates this by **also** reading the **play
+  history** (`/status/sessions/history/all`), which survives file deletion. Removing the **whole
+  series** from Plex (history included) still leaves no viewing → the next [sync](behavior.md)
+  falls back to **normalize-to-pilot**.

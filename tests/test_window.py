@@ -77,6 +77,9 @@ def _mock_sonarr(episodes: list[dict[str, object]] | None = None) -> dict[str, r
         "delete": respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
             return_value=httpx.Response(200)
         ),
+        "queue": respx.get(f"{SONARR}/queue").mock(
+            return_value=httpx.Response(200, json={"records": []})
+        ),
     }
 
 
@@ -215,6 +218,48 @@ async def test_unmonitors_watched_kept_episodes_without_deleting() -> None:
     assert 104 not in unmonitored
 
 
+@respx.mock
+async def test_cancels_season_pack_surplus_from_queue() -> None:
+    """A search for the GET window can make Sonarr grab a full season pack; episodes downloading
+    outside the window (GET ∪ KEEP ∪ Always-Have) are pulled from the queue so the whole season is
+    not imported. Anchor E2, GET=1 → in-window = E2 (anchor) + E3 (GET)."""
+    await _configure(always_have=[])  # GET=1, KEEP=1
+    await set_dry_run(False)
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=AHEAD_EPISODES)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    # A season pack is downloading: E1, E3, E4, E5 in the queue.
+    respx.get(f"{SONARR}/queue").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "records": [
+                    {"id": 11, "episodeId": 101},  # E1 - out of window → cancel
+                    {"id": 13, "episodeId": 103},  # E3 - GET window → keep
+                    {"id": 14, "episodeId": 104},  # E4 - out of window → cancel
+                    {"id": 15, "episodeId": 105},  # E5 - out of window → cancel
+                ]
+            },
+        )
+    )
+    cancel = respx.delete(url__regex=r"http://sonarr:8989/api/v3/queue/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+
+    await apply_window(TVDB, season=1, episode=2)
+
+    cancelled = {int(c.request.url.path.rsplit("/", 1)[1]) for c in cancel.calls}
+    assert cancelled == {11, 14, 15}  # E3 (in the GET window) is not pulled from the queue
+
+
 def _mock_sonarr_seasons(series_obj: dict[str, object]) -> respx.Route:
     """Mocks so apply_window can set seasons: GET /series?tvdb, GET+PUT /series/1,
     episodes and writes. Returns the PUT /series/1 route to inspect the body."""
@@ -230,6 +275,7 @@ def _mock_sonarr_seasons(series_obj: dict[str, object]) -> respx.Route:
     respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
         return_value=httpx.Response(200)
     )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
     return respx.put(f"{SONARR}/series/1").mock(return_value=httpx.Response(200, json=series_obj))
 
 

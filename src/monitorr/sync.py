@@ -67,7 +67,9 @@ async def _run() -> dict[str, int]:
                 continue
             # A show with an error (404, timeout, nonexistent episode) must not abort the sync.
             try:
-                watched = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
+                library = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
+                history = await _watch_history(uri, token, client_id, show.rating_key)
+                watched = _merge_watches(library, history)
                 if not watched:
                     continue
                 for episode in watched:
@@ -94,6 +96,31 @@ async def _run() -> dict[str, int]:
     )
     logger.info("sync completed: %s", summary)
     return summary
+
+
+async def _watch_history(
+    uri: str, token: str, client_id: str, rating_key: str
+) -> list[plex.WatchedEpisode]:
+    """Plex play history for a show, resilient: a history-endpoint error (e.g. an old PMS without
+    it) must not drop the library-based detection (`allLeaves`)."""
+    try:
+        return await plex.get_watch_history(uri, token, client_id, rating_key)
+    except Exception:
+        logger.warning("could not read Plex history for rating_key=%s", rating_key, exc_info=True)
+        return []
+
+
+def _merge_watches(*sources: list[plex.WatchedEpisode]) -> list[plex.WatchedEpisode]:
+    """Union of watched episodes by (season, episode), keeping the most recent viewed_at.
+    `allLeaves` catches manual marks still in the library; the play history catches viewing whose
+    files were deleted (so the anchor is the real last watched, not just what is still on disk)."""
+    latest: dict[tuple[int, int], str] = {}
+    for source in sources:
+        for ep in source:
+            key = (ep.season, ep.episode)
+            if key not in latest or ep.viewed_at > latest[key]:
+                latest[key] = ep.viewed_at
+    return [plex.WatchedEpisode(season=s, episode=e, viewed_at=v) for (s, e), v in latest.items()]
 
 
 async def _normalize_unwatched(

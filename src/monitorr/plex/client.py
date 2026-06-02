@@ -269,3 +269,53 @@ async def get_watched_episodes(
                 )
             )
         return watched
+
+
+async def get_watch_history(
+    server_uri: str, token: str, client_id: str, show_rating_key: str
+) -> list[WatchedEpisode]:
+    """Watched episodes of a show from Plex's play history (`/status/sessions/history/all`).
+
+    Unlike `allLeaves`, the play history **persists after the files are deleted**: Plex keeps it
+    independently of the current library items, so this catches back-catalog viewing whose episodes
+    are no longer in the library (the reason `allLeaves` alone anchors too early). Filtered to this
+    show and paginated.
+    """
+    latest: dict[tuple[int, int], str] = {}
+    start = 0
+    page_size = 500
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        while True:
+            response = await client.get(
+                f"{server_uri}/status/sessions/history/all",
+                params={
+                    "metadataItemID": show_rating_key,
+                    "sort": "viewedAt:desc",
+                    "X-Plex-Container-Start": start,
+                    "X-Plex-Container-Size": page_size,
+                },
+                headers=_headers(token, client_id),
+            )
+            response.raise_for_status()
+            items = _metadata(response.json())
+            for item in items:
+                if item.get("type") != "episode":
+                    continue
+                # metadataItemID should already scope to this show; double-check when present, so a
+                # server that ignores the filter doesn't leak other shows' history in.
+                grandparent = item.get("grandparentRatingKey")
+                if grandparent is not None and str(grandparent) != str(show_rating_key):
+                    continue
+                viewed = item.get("viewedAt")
+                viewed_at = (
+                    datetime.fromtimestamp(int(viewed), tz=UTC).isoformat()
+                    if viewed
+                    else datetime.now(UTC).isoformat()
+                )
+                key = (int(item.get("parentIndex", 0)), int(item.get("index", 0)))
+                if key not in latest or viewed_at > latest[key]:
+                    latest[key] = viewed_at
+            if len(items) < page_size:
+                break
+            start += page_size
+    return [WatchedEpisode(season=s, episode=e, viewed_at=v) for (s, e), v in latest.items()]
