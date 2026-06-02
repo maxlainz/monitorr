@@ -12,9 +12,13 @@ The engine activates when a show is considered **watched up to episode E** (anch
   (the user finished and the session closed before crossing the threshold).
 - By optional webhook: `media.scrobble` event.
 
-Each trigger recomputes the window of **that show** around E. The trigger is idempotent:
-the poller's debounce uses the key `(sessionKey, season, episode)`, not just `sessionKey`
-(Plex can reuse the `sessionKey` when auto-playing the next episode of a binge, so
+Each trigger records E and recomputes the window of **that show** around the **furthest-watched
+episode** (the maximum recorded watch, including E), consistent with the
+[sync](#sync--reconciliation) and the [grace sweep](#grace-periods-deletion-by-inactivity). So
+advancing an episode slides the window forward, while **re-watching or filling an earlier gap does
+not drag it backward** (which would re-download already-watched episodes). The trigger is
+idempotent: the poller's debounce uses the key `(sessionKey, season, episode)`, not just
+`sessionKey` (Plex can reuse the `sessionKey` when auto-playing the next episode of a binge, so
 advancing an episode triggers, but re-polling the same one doesn't).
 
 ## Window

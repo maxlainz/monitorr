@@ -33,9 +33,17 @@ class _PrevSession:
 
 
 async def process_watch(tvdb_id: int, season: int, episode: int) -> None:
-    """Records the viewing and recomputes the window. Shared by poller and webhook."""
+    """Records the viewing and recomputes the window around the **furthest-watched** episode.
+
+    The window anchors on the maximum recorded watch in airing order (including the one just
+    played), not on the episode itself, so re-watching or filling an earlier gap of an already-
+    watched show never slides the window backward and re-downloads episodes already seen.
+    Consistent with the sync and the grace sweep. Shared by poller and webhook.
+    """
     await store.record_watch(tvdb_id, season, episode)
-    await apply_window(tvdb_id, season, episode)
+    watches = await store.get_watches(tvdb_id)
+    anchor = max(((w.season, w.episode) for w in watches), default=(season, episode))
+    await apply_window(tvdb_id, *anchor)
 
 
 async def _poll_once(
