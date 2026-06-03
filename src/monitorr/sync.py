@@ -81,7 +81,9 @@ async def _run(force_full: bool) -> dict[str, int]:
     dry_run = await get_dry_run()
 
     managed_series = await sonarr.list_series(base_url, api_key)
-    managed = {s.tvdb_id for s in managed_series}
+    # Index once; reused as the "managed" set and to hand the SonarrSeries to apply_window (no
+    # per-show find_series_by_tvdb).
+    by_tvdb = {s.tvdb_id: s for s in managed_series}
 
     # Full vs incremental. FULL scans every show (allLeaves each managed one); INCREMENTAL only the
     # shows with new plays since the watermark. Full is entered by cause: forced (manual / dep
@@ -102,10 +104,9 @@ async def _run(force_full: bool) -> dict[str, int]:
             full = True
         history = {}
 
-    shows, matched = await _apply_watches(uri, token, client_id, history, managed, full)
+    shows, matched = await _apply_watches(uri, token, client_id, history, by_tvdb, full)
 
-    normalized = await _normalize_unwatched(base_url, api_key, managed_series, dry_run)
-    searched = await _search_missing(base_url, api_key, managed_series, dry_run)
+    normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
 
     await _persist_watermark(full, watermark, _history_max(history))
 
@@ -128,7 +129,7 @@ async def _apply_watches(
     token: str,
     client_id: str,
     history: dict[str, list[plex.WatchedEpisode]],
-    managed: set[int],
+    by_tvdb: dict[int, sonarr.SonarrSeries],
     full: bool,
 ) -> tuple[int, int]:
     """Records the watched state and applies the window per show. Returns (shows_considered,
@@ -145,7 +146,8 @@ async def _apply_watches(
     matched = 0
     for show in targets:
         shows += 1
-        if show.tvdb_id is None or show.tvdb_id not in managed:
+        series = by_tvdb.get(show.tvdb_id) if show.tvdb_id is not None else None
+        if series is None:
             continue
         # A show with an error (404, timeout, nonexistent episode) must not abort the sync.
         try:
@@ -156,7 +158,7 @@ async def _apply_watches(
                 continue
             for episode in watched:
                 await store.record_watch(
-                    show.tvdb_id, episode.season, episode.episode, episode.viewed_at
+                    series.tvdb_id, episode.season, episode.episode, episode.viewed_at
                 )
             anchor = max(watched, key=lambda e: (e.season, e.episode))
             # The single most useful debug line: how each source contributed and where the window
@@ -164,7 +166,7 @@ async def _apply_watches(
             logger.info(
                 "sync show tvdb=%s title=%s rating_key=%s allLeaves=%d history=%d "
                 "merged_keys=%s anchor=S%02dE%02d",
-                show.tvdb_id,
+                series.tvdb_id,
                 show.title,
                 show.rating_key,
                 len(library),
@@ -173,7 +175,8 @@ async def _apply_watches(
                 anchor.season,
                 anchor.episode,
             )
-            await apply_window(show.tvdb_id, anchor.season, anchor.episode)
+            # Pass the already-fetched series so the window skips its own find_series_by_tvdb.
+            await apply_window(series.tvdb_id, anchor.season, anchor.episode, series=series)
             matched += 1
         except Exception:
             logger.exception("error syncing tvdb=%s", show.tvdb_id)
@@ -233,59 +236,46 @@ def _merge_watches(*sources: list[plex.WatchedEpisode]) -> list[plex.WatchedEpis
     return [plex.WatchedEpisode(season=s, episode=e, viewed_at=v) for (s, e), v in latest.items()]
 
 
-async def _normalize_unwatched(
+async def _reconcile_managed(
     base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
-) -> int:
-    """Set-and-forget: every managed show WITHOUT recorded viewing is reduced to pilot-only,
-    preventing Sonarr from accumulating downloads of newly added shows. Those that do have viewing
-    are handled by the window (not touched here). Respects override (enabled / auto_normalize) and
-    dry-run."""
-    normalized = 0
-    for series in managed_series:
-        policy, enabled = await effective_policy(series.tvdb_id)
-        if not enabled or not policy.auto_normalize:
-            continue
-        if await store.get_watches(series.tvdb_id):
-            # A show that should be window-managed must NOT land here; if it does, the watch
-            # detection above missed it (back-catalog bug).
-            logger.debug(
-                "normalize skip tvdb=%s (%s): has recorded watches", series.tvdb_id, series.title
-            )
-            continue
-        try:
-            episodes = await sonarr.get_episodes(base_url, api_key, series.id)
-            logger.debug("normalize tvdb=%s (%s) to pilot-only", series.tvdb_id, series.title)
-            await actions.normalize_to_pilot(
-                base_url, api_key, series.tvdb_id, series, episodes, policy.always_have, dry_run
-            )
-            normalized += 1
-        except Exception:
-            logger.exception("error normalizing tvdb=%s", series.tvdb_id)
-    return normalized
+) -> tuple[int, int]:
+    """One pass over the managed shows with a **single `get_episodes` each** (was two passes:
+    normalize + re-search) and one shared `queue`. Returns (normalized, searched).
 
+    - **Normalize** (set-and-forget): a show WITHOUT recorded viewing is reduced to pilot-only,
+      preventing Sonarr from accumulating downloads of newly added shows. `normalize_to_pilot`
+      already searches a missing pilot and leaves only it monitored, so a re-search pass on a
+      just-normalized show would only (redundantly) hit that pilot — hence we skip it.
+    - **Re-search** (the rest: watched shows, or normalize disabled): Sonarr's Wanted/Missing —
+      episodes still monitored, already aired and without a file — searched again, excluding the
+      ones already downloading. Recovers from a transient indexer outage at monitor-time.
 
-async def _search_missing(
-    base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
-) -> int:
-    """Re-search Sonarr's Wanted/Missing on every sync: episodes that stay monitored, have
-    already aired and still lack a file, excluding the ones already downloading (in the queue).
-    Recovers from transient indexer outages where the search at monitor-time found nothing.
-    Respects override (enabled / search_on_get) and dry-run."""
+    Respects per-series override (enabled / auto_normalize / search_on_get) and dry-run."""
     queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
+    normalized = 0
     searched = 0
     for series in managed_series:
         policy, enabled = await effective_policy(series.tvdb_id)
-        if not enabled or not policy.search_on_get:
+        if not enabled:
             continue
         try:
-            missing = [
-                e.id
-                for e in await sonarr.get_episodes(base_url, api_key, series.id)
-                if e.monitored and not e.has_file and e.has_aired() and e.id not in queued
-            ]
-            if missing:
-                await actions.search_episodes(base_url, api_key, missing, dry_run)
-                searched += len(missing)
+            episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            if policy.auto_normalize and not await store.get_watches(series.tvdb_id):
+                logger.debug("normalize tvdb=%s (%s) to pilot-only", series.tvdb_id, series.title)
+                await actions.normalize_to_pilot(
+                    base_url, api_key, series.tvdb_id, series, episodes, policy.always_have, dry_run
+                )
+                normalized += 1
+                continue
+            if policy.search_on_get:
+                missing = [
+                    e.id
+                    for e in episodes
+                    if e.monitored and not e.has_file and e.has_aired() and e.id not in queued
+                ]
+                if missing:
+                    await actions.search_episodes(base_url, api_key, missing, dry_run)
+                    searched += len(missing)
         except Exception:
-            logger.exception("error re-searching missing tvdb=%s", series.tvdb_id)
-    return searched
+            logger.exception("error reconciling tvdb=%s", series.tvdb_id)
+    return normalized, searched

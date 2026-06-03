@@ -58,7 +58,18 @@ def keep_protected_keys(
     return keys
 
 
-async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
+async def apply_window(
+    tvdb_id: int,
+    season: int,
+    episode: int,
+    *,
+    series: SonarrSeries | None = None,
+    episodes: list[SonarrEpisode] | None = None,
+) -> None:
+    """`series`/`episodes` let the sync pass already-fetched data to avoid the per-show
+    `find_series_by_tvdb` + `get_episodes`; the poller/webhook leave them None → fetched here.
+    Equivalent: `series` is only read for `.id`/`.seasons` (season monitoring re-GETs the series
+    itself), and `episodes` is the same start-of-cycle snapshot it would otherwise have fetched."""
     policy, enabled = await effective_policy(tvdb_id)
     if not enabled:
         return
@@ -69,7 +80,8 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
     base_url, api_key = cfg
     dry_run = await get_dry_run()
 
-    series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
+    if series is None:
+        series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
     if series is None:
         logger.warning("show tvdb=%s is not in Sonarr", tvdb_id)
         return
@@ -80,7 +92,9 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
     )
 
-    real = _real_episodes(await sonarr.get_episodes(base_url, api_key, series.id))
+    if episodes is None:
+        episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+    real = _real_episodes(episodes)
     idx = next(
         (
             i
