@@ -119,9 +119,17 @@ waiting for a playback, by traversing the library:
   `title` and `Guid[]` (→ tvdb).
 - `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → episodes currently **in the
   library** with `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`.
-- `GET {serverUri}/status/sessions/history/all?metadataItemID={showRatingKey}` → the show's
-  **play history** (`parentIndex`, `index`, `viewedAt`), which **persists independently of the
-  files**. Paginated and filtered to the show.
+- `GET {serverUri}/status/sessions/history/all` (sorted, paginated, **no** `metadataItemID`) → the
+  **global play history** (`grandparentTitle`, `parentIndex`, `index`, `viewedAt`), swept **once per
+  sync** and grouped by **normalized `grandparentTitle`**. Each show looks up its plays by title.
+  - **Do not** scope it with `metadataItemID={showRatingKey}`: that server-side filter only matches
+    history whose metadata items still resolve under the show's **current** ratingKey. A series
+    **removed and re-added** in Plex gets a **new ratingKey**, so all its prior history (bound to the
+    old, now-orphaned ids) returns **empty** — the exact re-add case where the anchor then falls back
+    to disk and re-downloads old episodes. `grandparentTitle` is **stable across re-add**, so
+    correlating by it recovers the history regardless of ratingKey changes (and it's one call instead
+    of one per show). The bulk history rows often carry **no** `grandparentRatingKey`, which is why a
+    ratingKey-based filter can't be trusted here.
 
 monitorr **unions both** sources: the anchor is the maximum `(season, episode)` watched across
 them, and the most recent date seeds the real date for the grace periods.
@@ -149,3 +157,8 @@ you'd already watched it, without re-downloading from the pilot (see [`behavior.
   history** (`/status/sessions/history/all`), which survives file deletion. Removing the **whole
   series** from Plex (history included) still leaves no viewing → the next [sync](behavior.md)
   falls back to **normalize-to-pilot**.
+- **Re-adding a series changes its ratingKey**: a removed+re-added show gets a **new ratingKey**, so
+  a per-show history query (`metadataItemID={newRatingKey}`) returns **nothing** — the old history is
+  orphaned to the previous ids. This re-added a watched series anchored on the furthest **still-on-disk**
+  episode and re-downloaded old ones. Fixed by sweeping the **global** history once and correlating by
+  **`grandparentTitle`** (stable across re-add), never by ratingKey (see [Library scan](#library-scan-sync)).

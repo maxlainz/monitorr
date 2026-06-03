@@ -130,10 +130,12 @@ monitorr). Without unmonitoring first, Sonarr would import the already-started d
 Live detection (poller + webhook) only triggers when an episode is watched. The **sync** reconciles the
 watched state by reading the Plex library **and the play history** (see [`plex.md`](plex.md)): for each
 show managed by Sonarr, it unions the episodes still in the library (`allLeaves`, `viewCount>0`) with the
-**play history** (`/status/sessions/history/all`, which survives file deletion), records them with their
-real date (feeds the grace periods) and applies the window for the **last watched**. Reading the history
-is what keeps the back-catalog jump correct when later seasons were watched but their files were since
-deleted (otherwise the anchor would fall back to an earlier still-present episode and re-download it). It covers the cases the live mode doesn't see: shows already started at
+**play history** (a single global `/status/sessions/history/all` sweep correlated by `grandparentTitle`,
+which survives file deletion **and a remove/re-add** — a per-show `metadataItemID` query would miss the
+re-added show's history, see [`plex.md`](plex.md)), records them with their real date (feeds the grace
+periods) and applies the window for the **last watched**. Reading the history is what keeps the
+back-catalog jump correct when later seasons were watched but their files were since deleted (otherwise
+the anchor would fall back to an earlier still-present episode and re-download it). It covers the cases the live mode doesn't see: shows already started at
 install, episodes marked by hand in Plex, and viewing with monitorr off. **Retroactive (back-catalog):**
 because it applies the window for the last watched, a previously-watched show **added later** (e.g. when a
 new season drops) **jumps straight to your last watched episode** — it monitors/searches the GET window
