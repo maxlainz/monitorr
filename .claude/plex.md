@@ -119,9 +119,17 @@ waiting for a playback, by traversing the library:
   `title` and `Guid[]` (→ tvdb).
 - `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` → episodes currently **in the
   library** with `viewCount`, `parentIndex`, `index`, `lastViewedAt`. Watched = `viewCount>0`.
-- `GET {serverUri}/status/sessions/history/all` (sorted, paginated, **no** `metadataItemID`) → the
-  **global play history** (`grandparentTitle`, `parentIndex`, `index`, `viewedAt`), swept **once per
-  sync** and grouped by **normalized `grandparentTitle`**. Each show looks up its plays by title.
+- `GET {serverUri}/library/metadata/{showRatingKey}/allLeaves` is fetched **only for the shows with
+  new plays** on an incremental sync (and for every managed show on a full one) — see
+  [Incremental vs full](behavior.md#incremental-vs-full-avoid-re-scraping-plex).
+- `GET {serverUri}/status/sessions/history/all` (sorted `viewedAt:desc`, paginated, **no**
+  `metadataItemID`) → the **global play history** (`grandparentTitle`, `parentIndex`, `index`,
+  `viewedAt`), swept **once per sync** and grouped by **normalized `grandparentTitle`**. Each show
+  looks up its plays by title.
+  - **Incremental sweep**: `get_watch_history_by_show(..., since=<watermark>)` stops paginating at
+    the first row older than the stored `history_watermark` (rows are newest-first), so only the new
+    tail is fetched instead of the entire history. The watermark advances to the newest `viewedAt`
+    seen across the whole sweep (even unmanaged shows) so they're never re-fetched.
   - **Do not** scope it with `metadataItemID={showRatingKey}`: that server-side filter only matches
     history whose metadata items still resolve under the show's **current** ratingKey. A series
     **removed and re-added** in Plex gets a **new ratingKey**, so all its prior history (bound to the

@@ -5,6 +5,9 @@ See .claude/plex.md → "Server discovery", "Detection" and "Correlation".
 
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,6 +22,33 @@ _RESOURCES_URL = "https://plex.tv/api/v2/resources"
 _WEBHOOKS_URL = "https://plex.tv/api/v2/user/webhooks"
 _TIMEOUT = 30.0
 _TVDB_GUID = re.compile(r"tvdb://(\d+)")
+
+# A client reused for every Plex call inside a `pooled_session` (the sync cycle); empty otherwise.
+_pooled: ContextVar[httpx.AsyncClient | None] = ContextVar("plex_pooled_client", default=None)
+
+
+@asynccontextmanager
+async def _http() -> AsyncIterator[httpx.AsyncClient]:
+    """The pooled client when a `pooled_session` is active (one connection reused per cycle); else a
+    fresh client per call (poller/webhook/routes path, unchanged)."""
+    client = _pooled.get()
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as fresh:
+            yield fresh
+
+
+@asynccontextmanager
+async def pooled_session() -> AsyncIterator[None]:
+    """Reuse one connection for every Plex call inside the block (the sync cycle). Scoped via a
+    ContextVar so nested calls pick it up without threading a client through every signature."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as pooled:
+        token = _pooled.set(pooled)
+        try:
+            yield
+        finally:
+            _pooled.reset(token)
 
 
 class PlexConnection(BaseModel):
@@ -78,7 +108,7 @@ async def get_server() -> tuple[str, str] | None:
 
 
 async def discover_servers(account_token: str, client_id: str) -> list[PlexServer]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             _RESOURCES_URL,
             params={"includeHttps": "1", "includeRelay": "1"},
@@ -114,7 +144,7 @@ def _webhook_headers(account_token: str, client_id: str) -> dict[str, str]:
 
 async def list_account_webhooks(account_token: str, client_id: str) -> list[str]:
     """The account's configured webhook URLs (account-level, shared with other integrations)."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             _WEBHOOKS_URL, headers=_webhook_headers(account_token, client_id)
         )
@@ -131,7 +161,7 @@ async def list_account_webhooks(account_token: str, client_id: str) -> list[str]
 async def set_account_webhooks(account_token: str, client_id: str, urls: list[str]) -> None:
     """Replaces the whole account webhook list (POST is destructive; pass the full set)."""
     data = {"urls[]": urls} if urls else {"urls": ""}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.post(
             _WEBHOOKS_URL, data=data, headers=_webhook_headers(account_token, client_id)
         )
@@ -169,7 +199,7 @@ def _tvdb_from_guids(item: dict[str, Any]) -> int | None:
 
 
 async def get_sessions(server_uri: str, token: str, client_id: str) -> list[PlexSession]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             f"{server_uri}/status/sessions", headers=_headers(token, client_id)
         )
@@ -197,7 +227,7 @@ async def get_sessions(server_uri: str, token: str, client_id: str) -> list[Plex
 async def resolve_tvdb_id(
     server_uri: str, token: str, client_id: str, grandparent_rating_key: str
 ) -> int | None:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             f"{server_uri}/library/metadata/{grandparent_rating_key}",
             params={"includeGuids": "1"},
@@ -212,7 +242,7 @@ async def resolve_tvdb_id(
 
 async def list_show_libraries(server_uri: str, token: str, client_id: str) -> list[str]:
     """Keys of the show-type sections (`/library/sections`)."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             f"{server_uri}/library/sections", headers=_headers(token, client_id)
         )
@@ -227,7 +257,7 @@ async def list_show_libraries(server_uri: str, token: str, client_id: str) -> li
 async def list_shows(
     server_uri: str, token: str, client_id: str, section_key: str
 ) -> list[ShowRef]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             f"{server_uri}/library/sections/{section_key}/all",
             params={"type": "2", "includeGuids": "1"},
@@ -248,7 +278,7 @@ async def get_watched_episodes(
     server_uri: str, token: str, client_id: str, show_rating_key: str
 ) -> list[WatchedEpisode]:
     """Episodes with `viewCount>0` of a show (`/library/metadata/{key}/allLeaves`)."""
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with _http() as client:
         response = await client.get(
             f"{server_uri}/library/metadata/{show_rating_key}/allLeaves",
             headers=_headers(token, client_id),
@@ -288,7 +318,7 @@ def normalize_title(title: str) -> str:
 
 
 async def get_watch_history_by_show(
-    server_uri: str, token: str, client_id: str
+    server_uri: str, token: str, client_id: str, since: str | None = None
 ) -> dict[str, list[WatchedEpisode]]:
     """All episode plays from Plex's global play history, grouped by normalized show title.
 
@@ -300,14 +330,20 @@ async def get_watch_history_by_show(
     to whatever is still on disk — re-downloading already-watched episodes. Sweeping the whole
     history once and correlating by `grandparentTitle` (stable across re-add) fixes that and is one
     paginated call per sync instead of one per show. Keeps the most recent viewed_at per episode.
+
+    With `since` (ISO-8601 UTC watermark), the sweep is **incremental**: rows come `viewedAt:desc`,
+    so it stops at the first play older than `since` (every later row is older too) and returns only
+    the new tail. The caller passes the previous max viewed_at minus a small overlap; re-recording
+    an already-seen play is idempotent, so the overlap is safe.
     """
     latest: dict[tuple[str, int, int], str] = {}
     start = 0
     page_size = 1000
     pages = 0
     rows = 0
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        while True:
+    stop = False
+    async with _http() as client:
+        while not stop:
             response = await client.get(
                 f"{server_uri}/status/sessions/history/all",
                 params={
@@ -321,18 +357,22 @@ async def get_watch_history_by_show(
             items = _metadata(response.json())
             pages += 1
             for item in items:
-                if item.get("type") != "episode":
-                    continue
-                title = normalize_title(str(item.get("grandparentTitle", "")))
-                if not title:
-                    continue
-                rows += 1
                 viewed = item.get("viewedAt")
                 viewed_at = (
                     datetime.fromtimestamp(int(viewed), tz=UTC).isoformat()
                     if viewed
                     else datetime.now(UTC).isoformat()
                 )
+                # Newest-first: the first row older than the watermark ends the whole sweep.
+                if since is not None and viewed_at < since:
+                    stop = True
+                    break
+                if item.get("type") != "episode":
+                    continue
+                title = normalize_title(str(item.get("grandparentTitle", "")))
+                if not title:
+                    continue
+                rows += 1
                 key = (title, int(item.get("parentIndex", 0)), int(item.get("index", 0)))
                 if key not in latest or viewed_at > latest[key]:
                     latest[key] = viewed_at

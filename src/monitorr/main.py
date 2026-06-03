@@ -53,7 +53,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ]
     if settings.sync_interval > 0:
         tasks.append(asyncio.create_task(_sync_loop(settings.sync_interval)))
-    if settings.sync_on_startup and await sync.get_last_sync() is None:
+    # Startup floor check: run a sync only when a FULL is overdue (never ran, or the rolling
+    # full_sync_interval elapsed while the app was down). run_sync resolves it to full by the floor;
+    # a normal restart with a fresh full present does nothing here (the periodic loop stays
+    # incremental). Covers downtime that crosses the floor and sync_interval=0.
+    if settings.sync_on_startup and await sync.full_sync_due():
         tasks.append(asyncio.create_task(sync.run_sync()))
 
     try:

@@ -4,6 +4,37 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.5.0] - 2026-06-03
+
+### Added
+
+- **Incremental Plex reconciliation (history watermark)**: the periodic sync no longer re-scrapes
+  Plex in full. It sweeps only the play history **newer than a stored watermark** (the newest
+  `viewedAt` seen) and re-scans a show's library (`allLeaves`) **only when it has new plays**, instead
+  of scanning every managed show each cycle. The watch state is already persisted in SQLite and kept
+  fresh by the poller/webhook, so the watermark just fetches deltas.
+- **Full reconciliation by cause, not by routine timer**: a full scan now runs only on the first
+  connection of **both** Plex and Sonarr (or a Plex server change), the manual **"Sync now"** button,
+  when there is no watermark or the history endpoint is unavailable, or a rolling safety floor since
+  the last full. The floor is re-checked on each cycle **and at startup**, so a downtime that crosses
+  it still triggers a full on the next boot.
+- **`MONITORR_FULL_SYNC_INTERVAL`** env var: the rolling full-scrape floor in seconds (default
+  `2592000` = 30 days; `0` disables it, leaving full only by connection / manual / blind-history).
+- The status page now shows the **sync mode** (full/incremental) of the last run.
+
+### Changed
+
+- **"Sync now" forces a full reconciliation** (the deterministic "reconcile everything now"
+  affordance); the periodic timer stays incremental.
+- **Startup sync runs only when a full is overdue** (never ran, or the rolling floor elapsed) instead
+  of "once if it never ran".
+- **Fewer Sonarr calls per sync**: the window reuses the series already fetched by `list_series` (no
+  per-show `find_series_by_tvdb`), and normalize + re-search share a single `get_episodes` per managed
+  show and one queue snapshot (a just-normalized show skips the redundant re-search of its pilot).
+- **HTTP connection pooling for the sync cycle**: every Plex/Sonarr call in a cycle reuses one
+  connection (a `ContextVar`-scoped client) instead of a new TCP/TLS handshake per call. The
+  poller/webhook/routes keep a fresh client per call.
+
 ## [1.4.2] - 2026-06-03
 
 ### Fixed

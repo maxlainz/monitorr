@@ -19,3 +19,7 @@ DRY_RUN = "dry_run"
 WATCHED_THRESHOLD = "watched_threshold"
 USER_FILTER = "plex_user_filter"
 WEBHOOK_SECRET = "webhook_secret"
+# Incremental sync state (see sync.py): newest play seen, used as the floor for the next history
+# sweep; timestamp of the last FULL reconciliation, used for the rolling full-scrape floor.
+HISTORY_WATERMARK = "history_watermark"
+LAST_FULL_SYNC = "last_full_sync"

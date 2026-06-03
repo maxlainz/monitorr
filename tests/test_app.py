@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -5,7 +6,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
-from monitorr import constants, store
+from monitorr import constants, store, sync
 from monitorr.engine.policy import effective_policy, get_global_policy
 from monitorr.main import app
 from monitorr.plex.webhook import get_or_create_webhook_secret, parse_scrobble
@@ -167,6 +168,61 @@ async def test_series_policy_reset_follows_global() -> None:
     assert override.policy_json is None
     policy, _ = await effective_policy(12345)
     assert policy.keep_count == (await get_global_policy()).keep_count
+
+
+def _capture_run_sync(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """Replace sync.run_sync with a recorder of the force_full flag (the routes only enqueue it)."""
+    calls: list[bool] = []
+
+    async def fake_run_sync(force_full: bool = False) -> dict[str, int]:
+        calls.append(force_full)
+        return {}
+
+    monkeypatch.setattr(sync, "run_sync", fake_run_sync)
+    return calls
+
+
+async def test_sync_button_forces_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _capture_run_sync(monkeypatch)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/sync", follow_redirects=False)
+    await asyncio.sleep(0.05)  # let the background task run
+    assert resp.status_code == 303
+    assert calls == [True]  # manual "Sync now" = full reconciliation
+
+
+async def test_connecting_both_deps_triggers_full_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _capture_run_sync(monkeypatch)
+    # Plex already linked; saving Sonarr completes the pair → a full sync is enqueued.
+    await store.set_setting(constants.PLEX_SERVER_URI, "http://plex:32400")
+    await store.set_setting(constants.PLEX_SERVER_TOKEN, "tok")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/settings/sonarr",
+            data={"sonarr_url": "http://sonarr:8989", "sonarr_api_key": "key"},
+            follow_redirects=False,
+        )
+    await asyncio.sleep(0.05)
+    assert resp.status_code == 303
+    assert calls == [True]
+
+
+async def test_saving_sonarr_without_plex_does_not_trigger_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _capture_run_sync(monkeypatch)  # no Plex configured
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/settings/sonarr",
+            data={"sonarr_url": "http://sonarr:8989", "sonarr_api_key": "key"},
+            follow_redirects=False,
+        )
+    await asyncio.sleep(0.05)
+    assert resp.status_code == 303
+    assert calls == []  # only one dependency → no full sync
 
 
 async def test_toggle_enabled_preserves_policy_override() -> None:

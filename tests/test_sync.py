@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import respx
@@ -444,3 +445,154 @@ async def test_sync_skips_missing_search_when_search_on_get_disabled() -> None:
 
     assert summary == {"shows": 0, "matched": 0, "normalized": 0, "searched": 0}
     assert not command.called
+
+
+# --- incremental sync (watermark) ---
+
+
+def _mock_two_shows(history: list[httpx.Response]) -> tuple[respx.Route, respx.Route]:
+    """Two managed shows (Alpha=999, Beta=777). `history` feeds successive sweeps. Returns the two
+    allLeaves routes so a test can assert which shows were (re-)scanned."""
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"ratingKey": "100", "title": "Alpha", "Guid": [{"id": "tvdb://999"}]},
+                        {"ratingKey": "200", "title": "Beta", "Guid": [{"id": "tvdb://777"}]},
+                    ]
+                }
+            },
+        )
+    )
+    leaves_a = respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
+    )
+    leaves_b = respx.get(f"{PLEX}/library/metadata/200/allLeaves").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": ALL_LEAVES}})
+    )
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(side_effect=history)
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "Alpha", "tvdbId": 999},
+                {"id": 2, "title": "Beta", "tvdbId": 777},
+            ],
+        )
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=EPISODES)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
+    return leaves_a, leaves_b
+
+
+def _empty_history() -> httpx.Response:
+    return httpx.Response(200, json={"MediaContainer": {"Metadata": []}})
+
+
+def _history_play(title: str, season: int, episode: int, viewed_at: int) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "MediaContainer": {
+                "Metadata": [
+                    {
+                        "type": "episode",
+                        "grandparentTitle": title,
+                        "parentIndex": season,
+                        "index": episode,
+                        "viewedAt": viewed_at,
+                    }
+                ]
+            }
+        },
+    )
+
+
+@respx.mock
+async def test_sync_first_run_is_full_then_incremental_skips_unchanged() -> None:
+    """First sync (no watermark) is FULL and scans both shows. The next, with a single new play in
+    the history delta, is INCREMENTAL: only the changed show's allLeaves is fetched — the cost we
+    avoid is the per-show scan of every other managed show."""
+    await _configure_links()
+    await set_dry_run(False)
+    # 2100-01-01: comfortably newer than the watermark stamped by the first full.
+    leaves_a, leaves_b = _mock_two_shows(
+        [_empty_history(), _history_play("Alpha", 1, 3, 4102444800)]
+    )
+
+    await sync.run_sync()
+    first = await sync.get_last_sync()
+    assert first is not None and first["mode"] == "full"
+    assert leaves_a.call_count == 1 and leaves_b.call_count == 1  # full scanned both
+
+    await sync.run_sync()
+    second = await sync.get_last_sync()
+    assert second is not None and second["mode"] == "incremental"
+    assert leaves_a.call_count == 2  # Alpha had a new play → re-scanned
+    assert leaves_b.call_count == 1  # Beta unchanged → NOT re-scanned
+
+
+@respx.mock
+async def test_force_full_rescans_every_show() -> None:
+    """force_full ignores the watermark and scans all shows even with no new history (the manual
+    'Sync now' button uses this)."""
+    await _configure_links()
+    await set_dry_run(False)
+    leaves_a, leaves_b = _mock_two_shows([_empty_history(), _empty_history()])
+
+    await sync.run_sync()  # full (no watermark)
+    await sync.run_sync(force_full=True)  # full again despite no new plays
+
+    last = await sync.get_last_sync()
+    assert last is not None and last["mode"] == "full"
+    assert leaves_a.call_count == 2 and leaves_b.call_count == 2
+
+
+@respx.mock
+async def test_incremental_promotes_to_full_when_history_unavailable() -> None:
+    """If the history endpoint fails on an incremental cycle, the delta can't be trusted → the cycle
+    is promoted to a full reconciliation (every show scanned)."""
+    await _configure_links()
+    await set_dry_run(False)
+    leaves_a, leaves_b = _mock_two_shows([_empty_history(), httpx.Response(500)])
+
+    await sync.run_sync()  # full establishes the watermark
+    assert leaves_a.call_count == 1 and leaves_b.call_count == 1
+
+    await sync.run_sync()  # history 500 → promote to full
+    last = await sync.get_last_sync()
+    assert last is not None and last["mode"] == "full"
+    assert leaves_a.call_count == 2 and leaves_b.call_count == 2
+
+
+async def test_full_sync_due_tracks_the_rolling_floor() -> None:
+    """full_sync_due (the startup check) needs both deps and is due when no full ran or the rolling
+    floor elapsed — a comparison against the last full, so it survives downtime past the floor."""
+    assert await sync.full_sync_due() is False  # nothing configured
+
+    await store.set_setting(constants.PLEX_SERVER_URI, PLEX)
+    await store.set_setting(constants.PLEX_SERVER_TOKEN, "tok")
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    assert await sync.full_sync_due() is True  # ready, never ran a full
+
+    await store.set_setting(constants.LAST_FULL_SYNC, datetime.now(UTC).isoformat())
+    assert await sync.full_sync_due() is False  # fresh full
+
+    old = (datetime.now(UTC) - timedelta(days=31)).isoformat()
+    await store.set_setting(constants.LAST_FULL_SYNC, old)
+    assert await sync.full_sync_due() is True  # past the 30-day floor

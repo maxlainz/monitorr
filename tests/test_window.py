@@ -6,6 +6,7 @@ import respx
 from monitorr import constants, store
 from monitorr.engine.policy import Policy, set_dry_run, set_global_policy
 from monitorr.engine.window import apply_window
+from monitorr.sonarr.client import SonarrEpisode, SonarrSeries
 
 SONARR = "http://sonarr:8989/api/v3"
 TVDB = 999
@@ -123,6 +124,29 @@ async def test_real_mode_monitors_searches_deletes() -> None:
     assert routes["delete"].call_count == 2  # E1 and E2 deleted
     done = await store.list_deletions(dry_run=False)
     assert {(d.season, d.episode) for d in done} == {(1, 1), (1, 2)}
+
+
+@respx.mock
+async def test_passed_series_and_episodes_match_fetched_path() -> None:
+    """The sync passes already-fetched series/episodes: the window must produce the same Sonarr
+    writes as test_real_mode_monitors_searches_deletes (anchor S01E03 → monitor/search E4, delete
+    E1+E2) while skipping the per-show /series?tvdbId lookup and the /episode fetch."""
+    await _configure(always_have=[])
+    await set_dry_run(False)
+    routes = _mock_sonarr()
+
+    series = SonarrSeries(id=1, title="X", tvdbId=TVDB)
+    episodes = [SonarrEpisode.model_validate(e) for e in EPISODES]
+    await apply_window(TVDB, season=1, episode=3, series=series, episodes=episodes)
+
+    assert not routes["series"].called  # series provided → no find_series_by_tvdb
+    assert not routes["episodes"].called  # episodes provided → no get_episodes
+    assert routes["monitor"].called and routes["command"].called
+    assert routes["delete"].call_count == 2
+    assert {(d.season, d.episode) for d in await store.list_deletions(dry_run=False)} == {
+        (1, 1),
+        (1, 2),
+    }
 
 
 def _ep(num: int, *, has_file: bool, monitored: bool = True) -> dict[str, object]:
