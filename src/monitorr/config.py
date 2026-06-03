@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     plex_poll_interval: int = 30
     grace_sweep_interval: int = 3600
     sync_interval: int = 21600
+    # Rolling floor (seconds since the last FULL sync) that forces a full reconciliation as a safety
+    # net; the periodic timer is otherwise incremental. 30 days by default; 0 disables the floor
+    # (full only on connection of both deps, manual "Sync now", or when the history sweep is blind).
+    full_sync_interval: int = 2592000
     sync_on_startup: bool = True
     webhook_secret: str = ""
 

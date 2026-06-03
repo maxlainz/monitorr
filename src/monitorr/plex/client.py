@@ -288,7 +288,7 @@ def normalize_title(title: str) -> str:
 
 
 async def get_watch_history_by_show(
-    server_uri: str, token: str, client_id: str
+    server_uri: str, token: str, client_id: str, since: str | None = None
 ) -> dict[str, list[WatchedEpisode]]:
     """All episode plays from Plex's global play history, grouped by normalized show title.
 
@@ -300,14 +300,20 @@ async def get_watch_history_by_show(
     to whatever is still on disk — re-downloading already-watched episodes. Sweeping the whole
     history once and correlating by `grandparentTitle` (stable across re-add) fixes that and is one
     paginated call per sync instead of one per show. Keeps the most recent viewed_at per episode.
+
+    With `since` (ISO-8601 UTC watermark), the sweep is **incremental**: rows come `viewedAt:desc`,
+    so it stops at the first play older than `since` (every later row is older too) and returns only
+    the new tail. The caller passes the previous max viewed_at minus a small overlap; re-recording
+    an already-seen play is idempotent, so the overlap is safe.
     """
     latest: dict[tuple[str, int, int], str] = {}
     start = 0
     page_size = 1000
     pages = 0
     rows = 0
+    stop = False
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        while True:
+        while not stop:
             response = await client.get(
                 f"{server_uri}/status/sessions/history/all",
                 params={
@@ -321,18 +327,22 @@ async def get_watch_history_by_show(
             items = _metadata(response.json())
             pages += 1
             for item in items:
-                if item.get("type") != "episode":
-                    continue
-                title = normalize_title(str(item.get("grandparentTitle", "")))
-                if not title:
-                    continue
-                rows += 1
                 viewed = item.get("viewedAt")
                 viewed_at = (
                     datetime.fromtimestamp(int(viewed), tz=UTC).isoformat()
                     if viewed
                     else datetime.now(UTC).isoformat()
                 )
+                # Newest-first: the first row older than the watermark ends the whole sweep.
+                if since is not None and viewed_at < since:
+                    stop = True
+                    break
+                if item.get("type") != "episode":
+                    continue
+                title = normalize_title(str(item.get("grandparentTitle", "")))
+                if not title:
+                    continue
+                rows += 1
                 key = (title, int(item.get("parentIndex", 0)), int(item.get("index", 0)))
                 if key not in latest or viewed_at > latest[key]:
                     latest[key] = viewed_at

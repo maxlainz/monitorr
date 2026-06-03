@@ -142,15 +142,40 @@ new season drops) **jumps straight to your last watched episode** — it monitor
 ahead of that point and never re-downloads the series from the pilot. The detection is from Plex's reported
 watch state, not from disk/Sonarr (see the pitfall in [`plex.md`](plex.md)); if Plex reports **no** viewing
 the show is **normalized to pilot** instead. It also **normalizes
-to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normalize-to-pilot)). It's
-triggered by the "Sync now" button, on startup (once) and periodically. It inherits the engine's
-dry-run.
+to pilot** the managed shows with no viewing (see [Normalize to Pilot](#normalize-to-pilot)). It
+inherits the engine's dry-run.
 
-Finally, each sync **re-searches Sonarr's Wanted/Missing**: every managed show's episodes that are
-still **monitored, already aired and without a file** are searched again (`EpisodeSearch`),
-**excluding** the ones already downloading (present in Sonarr's `queue`). This recovers from a
-transient indexer outage where the search at monitor-time found nothing. It is governed by the same
-`search_on_get` flag (ON by default) and respects per-series `enabled` and dry-run.
+### Incremental vs full (avoid re-scraping Plex)
+
+The watch state is **already persisted** in SQLite (`episode_watch` / `series_activity`), kept fresh
+in real time by the poller/webhook. The periodic sync is therefore **incremental**: it sweeps only
+the play history **newer than a watermark** (`history_watermark` = the newest `viewedAt` seen, minus
+a small overlap) and re-scans `allLeaves` **only for the shows with new plays** — skipping the
+per-show library scan of the whole catalogue (the expensive part on big libraries). The history
+endpoint already returns rows `viewedAt:desc`, so the sweep stops at the first play older than the
+watermark.
+
+A **full** reconciliation (scan every managed show) is entered only **by cause**, never by a routine
+timer:
+
+- **Connection of both dependencies** (Plex *and* Sonarr configured, or a Plex server change) — the
+  "first full"; the local DB may be stale relative to the freshly connected source.
+- **Manual "Sync now"** button — the deterministic "reconcile everything now" affordance.
+- **No watermark yet** (first ready) or the **history endpoint unavailable** (an empty delta from a
+  dead source must not be mistaken for "nothing new" → promote that cycle to full).
+- **Rolling safety floor**: `full_sync_interval` (default **30 days**) since the last full. It's a
+  *rolling* comparison (`now − last_full_sync`), checked on each cycle **and at startup**, so a
+  downtime that crosses the floor triggers a full on the next boot — the window is never "missed".
+
+`last_sync` records the `mode` (`full`/`incremental`) for the UI. Cost a full incurs (per-show
+`allLeaves` + full history pagination) is the cost incremental avoids.
+
+Both modes also **normalize** unwatched shows and **re-search Sonarr's Wanted/Missing**: every
+managed show's episodes that are still **monitored, already aired and without a file** are searched
+again (`EpisodeSearch`), **excluding** the ones already downloading (present in Sonarr's `queue`).
+This recovers from a transient indexer outage where the search at monitor-time found nothing. It is
+governed by the same `search_on_get` flag (ON by default) and respects per-series `enabled` and
+dry-run.
 
 ## Configuration
 

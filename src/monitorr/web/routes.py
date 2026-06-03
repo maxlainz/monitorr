@@ -26,6 +26,7 @@ from monitorr.plex.client import (
     PlexServer,
     choose_connection,
     discover_servers,
+    get_server,
     resolve_tvdb_id,
 )
 from monitorr.plex.poller import process_watch
@@ -109,6 +110,18 @@ async def _webhook_registered(webhook_url: str) -> bool | None:
         return None
 
 
+async def _maybe_trigger_full_sync() -> None:
+    """When both Plex and Sonarr are configured (first connection of the pair, or a Plex server
+    change), force a full reconciliation in the background: the local watch DB may be stale relative
+    to the freshly connected source. The full-vs-incremental decision lives in run_sync; we only
+    enqueue with force."""
+    if await get_server() is None or await sonarr.get_config() is None or sync.is_running():
+        return
+    task = asyncio.create_task(sync.run_sync(force_full=True))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
 # --- pages ---
 
 
@@ -186,6 +199,7 @@ async def save_sonarr(
 ) -> RedirectResponse:
     await store.set_setting(constants.SONARR_URL, sonarr_url.strip())
     await store.set_setting(constants.SONARR_API_KEY, sonarr_api_key.strip())
+    await _maybe_trigger_full_sync()
     return RedirectResponse(url="/settings", status_code=303)
 
 
@@ -339,6 +353,7 @@ async def plex_choose_server(
             if server.client_identifier == client_identifier:
                 if await _store_server(server):
                     await _try_register_webhook(request)
+                    await _maybe_trigger_full_sync()
                 break
     return RedirectResponse(url="/settings", status_code=303)
 
@@ -444,8 +459,9 @@ async def reset_series_policy(tvdb_id: int) -> RedirectResponse:
 
 @router.post("/sync")
 async def trigger_sync() -> RedirectResponse:
+    # The manual button is the deterministic "reconcile everything now" affordance → force full.
     if not sync.is_running():
-        task = asyncio.create_task(sync.run_sync())
+        task = asyncio.create_task(sync.run_sync(force_full=True))
         _bg_tasks.add(task)
         task.add_done_callback(_bg_tasks.discard)
     return RedirectResponse(url="/", status_code=303)
