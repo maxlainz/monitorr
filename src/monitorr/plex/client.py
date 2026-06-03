@@ -3,6 +3,7 @@
 See .claude/plex.md → "Server discovery", "Detection" and "Correlation".
 """
 
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -11,6 +12,8 @@ import httpx
 from pydantic import BaseModel
 
 from monitorr import constants, store
+
+logger = logging.getLogger(__name__)
 
 _RESOURCES_URL = "https://plex.tv/api/v2/resources"
 _WEBHOOKS_URL = "https://plex.tv/api/v2/user/webhooks"
@@ -268,6 +271,12 @@ async def get_watched_episodes(
                     viewed_at=viewed_at,
                 )
             )
+        logger.debug(
+            "allLeaves rating_key=%s watched=%d keys=%s",
+            show_rating_key,
+            len(watched),
+            sorted((w.season, w.episode) for w in watched),
+        )
         return watched
 
 
@@ -284,6 +293,9 @@ async def get_watch_history(
     latest: dict[tuple[int, int], str] = {}
     start = 0
     page_size = 500
+    pages = 0
+    raw_episode_rows = 0
+    dropped_other_show = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         while True:
             response = await client.get(
@@ -298,13 +310,16 @@ async def get_watch_history(
             )
             response.raise_for_status()
             items = _metadata(response.json())
+            pages += 1
             for item in items:
                 if item.get("type") != "episode":
                     continue
+                raw_episode_rows += 1
                 # metadataItemID should already scope to this show; double-check when present, so a
                 # server that ignores the filter doesn't leak other shows' history in.
                 grandparent = item.get("grandparentRatingKey")
                 if grandparent is not None and str(grandparent) != str(show_rating_key):
+                    dropped_other_show += 1
                     continue
                 viewed = item.get("viewedAt")
                 viewed_at = (
@@ -318,4 +333,15 @@ async def get_watch_history(
             if len(items) < page_size:
                 break
             start += page_size
+    # raw vs kept vs dropped pinpoints the re-add bug: history orphaned to the old ratingKey shows
+    # raw_episode_rows=0, while a server ignoring metadataItemID shows kept=0 with dropped>0.
+    logger.debug(
+        "history rating_key=%s pages=%d raw_episode_rows=%d kept=%d dropped_other_show=%d keys=%s",
+        show_rating_key,
+        pages,
+        raw_episode_rows,
+        raw_episode_rows - dropped_other_show,
+        dropped_other_show,
+        sorted(latest.keys()),
+    )
     return [WatchedEpisode(season=s, episode=e, viewed_at=v) for (s, e), v in latest.items()]

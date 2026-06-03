@@ -77,6 +77,20 @@ async def _run() -> dict[str, int]:
                         show.tvdb_id, episode.season, episode.episode, episode.viewed_at
                     )
                 anchor = max(watched, key=lambda e: (e.season, e.episode))
+                # The single most useful debug line: how each source contributed and where the
+                # window anchors. A back-catalog miss shows here as an anchor below the real max.
+                logger.info(
+                    "sync show tvdb=%s title=%s rating_key=%s allLeaves=%d history=%d "
+                    "merged_keys=%s anchor=S%02dE%02d",
+                    show.tvdb_id,
+                    show.title,
+                    show.rating_key,
+                    len(library),
+                    len(history),
+                    sorted((e.season, e.episode) for e in watched),
+                    anchor.season,
+                    anchor.episode,
+                )
                 await apply_window(show.tvdb_id, anchor.season, anchor.episode)
                 matched += 1
             except Exception:
@@ -136,9 +150,15 @@ async def _normalize_unwatched(
         if not enabled or not policy.auto_normalize:
             continue
         if await store.get_watches(series.tvdb_id):
+            # A show that should be window-managed must NOT land here; if it does, the watch
+            # detection above missed it (back-catalog bug).
+            logger.debug(
+                "normalize skip tvdb=%s (%s): has recorded watches", series.tvdb_id, series.title
+            )
             continue
         try:
             episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            logger.debug("normalize tvdb=%s (%s) to pilot-only", series.tvdb_id, series.title)
             await actions.normalize_to_pilot(
                 base_url, api_key, series.tvdb_id, series, episodes, policy.always_have, dry_run
             )
