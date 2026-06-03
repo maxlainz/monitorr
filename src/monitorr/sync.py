@@ -58,6 +58,10 @@ async def _run() -> dict[str, int]:
     managed_series = await sonarr.list_series(base_url, api_key)
     managed = {s.tvdb_id for s in managed_series}
 
+    # One global play-history sweep, correlated per show by title (see _watch_history): re-add-proof
+    # and one call instead of one per show.
+    history_by_show = await _watch_history(uri, token, client_id)
+
     shows = 0
     matched = 0
     for section in await plex.list_show_libraries(uri, token, client_id):
@@ -68,7 +72,7 @@ async def _run() -> dict[str, int]:
             # A show with an error (404, timeout, nonexistent episode) must not abort the sync.
             try:
                 library = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
-                history = await _watch_history(uri, token, client_id, show.rating_key)
+                history = history_by_show.get(plex.normalize_title(show.title), [])
                 watched = _merge_watches(library, history)
                 if not watched:
                     continue
@@ -77,6 +81,20 @@ async def _run() -> dict[str, int]:
                         show.tvdb_id, episode.season, episode.episode, episode.viewed_at
                     )
                 anchor = max(watched, key=lambda e: (e.season, e.episode))
+                # The single most useful debug line: how each source contributed and where the
+                # window anchors. A back-catalog miss shows here as an anchor below the real max.
+                logger.info(
+                    "sync show tvdb=%s title=%s rating_key=%s allLeaves=%d history=%d "
+                    "merged_keys=%s anchor=S%02dE%02d",
+                    show.tvdb_id,
+                    show.title,
+                    show.rating_key,
+                    len(library),
+                    len(history),
+                    sorted((e.season, e.episode) for e in watched),
+                    anchor.season,
+                    anchor.episode,
+                )
                 await apply_window(show.tvdb_id, anchor.season, anchor.episode)
                 matched += 1
             except Exception:
@@ -99,15 +117,16 @@ async def _run() -> dict[str, int]:
 
 
 async def _watch_history(
-    uri: str, token: str, client_id: str, rating_key: str
-) -> list[plex.WatchedEpisode]:
-    """Plex play history for a show, resilient: a history-endpoint error (e.g. an old PMS without
-    it) must not drop the library-based detection (`allLeaves`)."""
+    uri: str, token: str, client_id: str
+) -> dict[str, list[plex.WatchedEpisode]]:
+    """Global Plex play history grouped by normalized show title, resilient: a history-endpoint
+    error (e.g. an old PMS without it) must not drop the library-based detection (`allLeaves`); it
+    only degrades the back-catalog (re-add) recovery."""
     try:
-        return await plex.get_watch_history(uri, token, client_id, rating_key)
+        return await plex.get_watch_history_by_show(uri, token, client_id)
     except Exception:
-        logger.warning("could not read Plex history for rating_key=%s", rating_key, exc_info=True)
-        return []
+        logger.warning("could not read Plex play history; back-catalog degraded", exc_info=True)
+        return {}
 
 
 def _merge_watches(*sources: list[plex.WatchedEpisode]) -> list[plex.WatchedEpisode]:
@@ -136,9 +155,15 @@ async def _normalize_unwatched(
         if not enabled or not policy.auto_normalize:
             continue
         if await store.get_watches(series.tvdb_id):
+            # A show that should be window-managed must NOT land here; if it does, the watch
+            # detection above missed it (back-catalog bug).
+            logger.debug(
+                "normalize skip tvdb=%s (%s): has recorded watches", series.tvdb_id, series.title
+            )
             continue
         try:
             episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+            logger.debug("normalize tvdb=%s (%s) to pilot-only", series.tvdb_id, series.title)
             await actions.normalize_to_pilot(
                 base_url, api_key, series.tvdb_id, series, episodes, policy.always_have, dry_run
             )

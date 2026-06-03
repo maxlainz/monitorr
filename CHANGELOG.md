@@ -4,6 +4,26 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.4.2] - 2026-06-03
+
+### Fixed
+
+- **Re-adding an already-watched series still re-imported old episodes**: the back-catalog play
+  history was queried **per show** with `metadataItemID={ratingKey}`. Plex assigns a series a **new
+  ratingKey** when it is removed and re-added, so that query returned **nothing** (the old history is
+  orphaned to the previous ids); the window then anchored on the furthest **still-on-disk** episode
+  and searched/downloaded the next, already-watched one. The sync now sweeps the **global** play
+  history once and correlates each show by **`grandparentTitle`** (stable across re-add), recovering
+  the true last-watched regardless of ratingKey changes — and with one history call per sync instead
+  of one per show.
+
+### Added
+
+- **Deep `DEBUG` tracing of the back-catalog detection and window** (gated at `DEBUG`, quiet at
+  `INFO`): per-show `allLeaves`/history counts and the chosen anchor, the global history sweep
+  summary, and `apply_window`'s GET-ahead / search-ahead / unmonitor / queue-cancel decisions, plus
+  an anchor-regression warning.
+
 ## [1.4.1] - 2026-06-02
 
 ### Fixed

@@ -3,6 +3,7 @@
 See .claude/plex.md → "Server discovery", "Detection" and "Correlation".
 """
 
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -11,6 +12,8 @@ import httpx
 from pydantic import BaseModel
 
 from monitorr import constants, store
+
+logger = logging.getLogger(__name__)
 
 _RESOURCES_URL = "https://plex.tv/api/v2/resources"
 _WEBHOOKS_URL = "https://plex.tv/api/v2/user/webhooks"
@@ -268,28 +271,46 @@ async def get_watched_episodes(
                     viewed_at=viewed_at,
                 )
             )
+        logger.debug(
+            "allLeaves rating_key=%s watched=%d keys=%s",
+            show_rating_key,
+            len(watched),
+            sorted((w.season, w.episode) for w in watched),
+        )
         return watched
 
 
-async def get_watch_history(
-    server_uri: str, token: str, client_id: str, show_rating_key: str
-) -> list[WatchedEpisode]:
-    """Watched episodes of a show from Plex's play history (`/status/sessions/history/all`).
+def normalize_title(title: str) -> str:
+    """Join key for correlating Plex play history to a show. Both sides come from the same Plex
+    server (history `grandparentTitle` ↔ library `ShowRef.title`), so a casefold+strip suffices and
+    is **stable across a remove/re-add** (which changes ratingKeys but not the display title)."""
+    return title.strip().casefold()
 
-    Unlike `allLeaves`, the play history **persists after the files are deleted**: Plex keeps it
-    independently of the current library items, so this catches back-catalog viewing whose episodes
-    are no longer in the library (the reason `allLeaves` alone anchors too early). Filtered to this
-    show and paginated.
+
+async def get_watch_history_by_show(
+    server_uri: str, token: str, client_id: str
+) -> dict[str, list[WatchedEpisode]]:
+    """All episode plays from Plex's global play history, grouped by normalized show title.
+
+    Unlike `allLeaves`, the play history **persists after the files are deleted**, catching
+    back-catalog viewing whose episodes left the library (the reason `allLeaves` alone anchors too
+    early). It must NOT be scoped with `metadataItemID=<show ratingKey>`: that filter only matches
+    history whose metadata items still resolve under the show's **current** ratingKey, so a series
+    **removed and re-added** in Plex (new ratingKey) loses all its history and the anchor falls back
+    to whatever is still on disk — re-downloading already-watched episodes. Sweeping the whole
+    history once and correlating by `grandparentTitle` (stable across re-add) fixes that and is one
+    paginated call per sync instead of one per show. Keeps the most recent viewed_at per episode.
     """
-    latest: dict[tuple[int, int], str] = {}
+    latest: dict[tuple[str, int, int], str] = {}
     start = 0
-    page_size = 500
+    page_size = 1000
+    pages = 0
+    rows = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         while True:
             response = await client.get(
                 f"{server_uri}/status/sessions/history/all",
                 params={
-                    "metadataItemID": show_rating_key,
                     "sort": "viewedAt:desc",
                     "X-Plex-Container-Start": start,
                     "X-Plex-Container-Size": page_size,
@@ -298,24 +319,36 @@ async def get_watch_history(
             )
             response.raise_for_status()
             items = _metadata(response.json())
+            pages += 1
             for item in items:
                 if item.get("type") != "episode":
                     continue
-                # metadataItemID should already scope to this show; double-check when present, so a
-                # server that ignores the filter doesn't leak other shows' history in.
-                grandparent = item.get("grandparentRatingKey")
-                if grandparent is not None and str(grandparent) != str(show_rating_key):
+                title = normalize_title(str(item.get("grandparentTitle", "")))
+                if not title:
                     continue
+                rows += 1
                 viewed = item.get("viewedAt")
                 viewed_at = (
                     datetime.fromtimestamp(int(viewed), tz=UTC).isoformat()
                     if viewed
                     else datetime.now(UTC).isoformat()
                 )
-                key = (int(item.get("parentIndex", 0)), int(item.get("index", 0)))
+                key = (title, int(item.get("parentIndex", 0)), int(item.get("index", 0)))
                 if key not in latest or viewed_at > latest[key]:
                     latest[key] = viewed_at
             if len(items) < page_size:
                 break
             start += page_size
-    return [WatchedEpisode(season=s, episode=e, viewed_at=v) for (s, e), v in latest.items()]
+    by_show: dict[str, list[WatchedEpisode]] = {}
+    for (title, season, episode), viewed_at in latest.items():
+        by_show.setdefault(title, []).append(
+            WatchedEpisode(season=season, episode=episode, viewed_at=viewed_at)
+        )
+    logger.debug(
+        "history sweep: pages=%d episode_rows=%d shows=%d per_show=%s",
+        pages,
+        rows,
+        len(by_show),
+        {t: sorted((w.season, w.episode) for w in eps) for t, eps in by_show.items()},
+    )
+    return by_show

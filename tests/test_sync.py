@@ -196,10 +196,11 @@ async def test_sync_continues_when_one_series_errors() -> None:
 
 @respx.mock
 async def test_sync_anchors_on_history_when_files_deleted() -> None:
-    """Repro: watched S3, then its files were deleted. Plex's allLeaves (current library state)
-    only returns the episodes still on disk (S1E1,E2,E5), but the play history persists S3. The
-    sync must anchor on the real last watched (S3) and search ahead of S3 — never search S1, which
-    would make Sonarr grab the S1 season pack and re-download the whole season."""
+    """Repro: watched S3, then its files were deleted (and/or the show was removed and re-added,
+    changing its ratingKey). Plex's allLeaves (current library state) only returns the episodes
+    still on disk (S1E1,E2,E5), but the global play history persists S3 and is correlated by
+    grandparentTitle (not the volatile ratingKey). The sync must anchor on the real last watched
+    (S3) and search ahead of S3 — never search S1, which would re-download watched episodes."""
     await _configure_links()  # always_have=[], dry-run ON by default
     await set_dry_run(False)
     respx.get(f"{PLEX}/library/sections").mock(
@@ -234,7 +235,8 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
             },
         )
     )
-    # Play history: S3 watched (files since deleted, no longer in allLeaves).
+    # Global play history: S3 watched (files since deleted, no longer in allLeaves). Correlated by
+    # grandparentTitle ("X"), so it is found regardless of the show's current ratingKey.
     respx.get(f"{PLEX}/status/sessions/history/all").mock(
         return_value=httpx.Response(
             200,
@@ -243,14 +245,14 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
                     "Metadata": [
                         {
                             "type": "episode",
-                            "grandparentRatingKey": "100",
+                            "grandparentTitle": "X",
                             "parentIndex": 3,
                             "index": 2,
                             "viewedAt": 1710000200,
                         },
                         {
                             "type": "episode",
-                            "grandparentRatingKey": "100",
+                            "grandparentTitle": "X",
                             "parentIndex": 3,
                             "index": 1,
                             "viewedAt": 1710000100,

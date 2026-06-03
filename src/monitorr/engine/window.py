@@ -5,6 +5,7 @@ See .claude/behavior.md. Triggered when detecting "show watched up to episode E"
 
 import logging
 
+from monitorr import store
 from monitorr.engine import actions
 from monitorr.engine.policy import Policy, effective_policy, get_dry_run, matches_always_have
 from monitorr.sonarr import client as sonarr
@@ -92,14 +93,46 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
         logger.warning("S%02dE%02d not found in Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
 
+    # Anchor-regression guard (diagnostics): the window must never apply below the furthest
+    # recorded watch, or it slides backward and re-downloads already-seen episodes. Gated so the
+    # extra read only happens under DEBUG.
+    if logger.isEnabledFor(logging.DEBUG):
+        recorded = await store.get_watches(tvdb_id)
+        max_watch = max(((w.season, w.episode) for w in recorded), default=(season, episode))
+        if (season, episode) < max_watch:
+            logger.warning(
+                "anchor regression tvdb=%s: applying S%02dE%02d below recorded max S%02dE%02d",
+                tvdb_id,
+                season,
+                episode,
+                max_watch[0],
+                max_watch[1],
+            )
+
     # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)
+    # search_ahead = the GET window without a file = what gets searched (and can drag in a season
+    # pack of already-watched episodes). The most important line when chasing the re-import bug.
+    search_ahead = [e for e in ahead if not e.has_file]
+    logger.debug(
+        "apply_window tvdb=%s anchor=S%02dE%02d idx=%d get=%d%s keep=%d%s dry_run=%s "
+        "ahead=%s search_ahead=%s",
+        tvdb_id,
+        season,
+        episode,
+        idx,
+        policy.get_count,
+        policy.get_unit[0],
+        policy.keep_count,
+        policy.keep_unit[0],
+        dry_run,
+        [(e.season_number, e.episode_number) for e in ahead],
+        [(e.season_number, e.episode_number) for e in search_ahead],
+    )
     if ahead:
         await actions.monitor_episodes(base_url, api_key, [e.id for e in ahead], dry_run)
         if policy.search_on_get:
-            await actions.search_episodes(
-                base_url, api_key, [e.id for e in ahead if not e.has_file], dry_run
-            )
+            await actions.search_episodes(base_url, api_key, [e.id for e in search_ahead], dry_run)
 
     ahead_ids = {e.id for e in ahead}
     deleted_ids: set[int] = set()
@@ -157,4 +190,12 @@ async def apply_window(tvdb_id: int, season: int, episode: int) -> None:
     }
     queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
     surplus = [e.id for e in real if e.id in queued and e.id not in in_window_ids]
+    logger.debug(
+        "apply_window tvdb=%s unmonitor=%d in_window=%d queued=%d surplus=%s",
+        tvdb_id,
+        len(to_unmonitor),
+        len(in_window_ids),
+        len(queued),
+        [(e.season_number, e.episode_number) for e in real if e.id in surplus],
+    )
     await actions.cancel_downloads(base_url, api_key, surplus, dry_run)
