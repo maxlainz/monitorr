@@ -1,5 +1,8 @@
 """Sonarr client (API v3/v4). See .claude/sonarr.md for endpoints and gotchas."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 
 import httpx
@@ -8,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from monitorr import constants, store
 
 _TIMEOUT = 30.0
+
+# A client reused for every Sonarr call inside a `pooled_session` (the sync cycle); empty otherwise.
+_pooled: ContextVar[httpx.AsyncClient | None] = ContextVar("sonarr_pooled_client", default=None)
 
 
 class SonarrSeason(BaseModel):
@@ -54,12 +60,37 @@ async def get_config() -> tuple[str, str] | None:
     return base_url.rstrip("/"), api_key
 
 
-def _client(base_url: str, api_key: str) -> httpx.AsyncClient:
+def _new_client(base_url: str, api_key: str) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=f"{base_url.rstrip('/')}/api/v3",
         headers={"X-Api-Key": api_key},
         timeout=_TIMEOUT,
     )
+
+
+@asynccontextmanager
+async def _client(base_url: str, api_key: str) -> AsyncIterator[httpx.AsyncClient]:
+    """The pooled client when a `pooled_session` is active (one connection reused per sync cycle);
+    else a fresh client per call (poller/routes path, unchanged). base_url/api_key are constant
+    within a cycle, so the pooled client built once with them serves every call."""
+    pooled = _pooled.get()
+    if pooled is not None:
+        yield pooled
+    else:
+        async with _new_client(base_url, api_key) as fresh:
+            yield fresh
+
+
+@asynccontextmanager
+async def pooled_session(base_url: str, api_key: str) -> AsyncIterator[None]:
+    """Reuse one connection for every Sonarr call inside the block (the sync cycle), scoped via a
+    ContextVar so nested calls pick it up without threading a client through every signature."""
+    async with _new_client(base_url, api_key) as client:
+        token = _pooled.set(client)
+        try:
+            yield
+        finally:
+            _pooled.reset(token)
 
 
 async def system_status(base_url: str, api_key: str) -> str | None:

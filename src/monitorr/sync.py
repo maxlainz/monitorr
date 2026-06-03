@@ -80,35 +80,38 @@ async def _run(force_full: bool) -> dict[str, int]:
     base_url, api_key = cfg
     dry_run = await get_dry_run()
 
-    managed_series = await sonarr.list_series(base_url, api_key)
-    # Index once; reused as the "managed" set and to hand the SonarrSeries to apply_window (no
-    # per-show find_series_by_tvdb).
-    by_tvdb = {s.tvdb_id: s for s in managed_series}
+    # One pooled connection per side for the whole cycle (avoids a TCP/TLS handshake per call). The
+    # ContextVar propagates to every nested Plex/Sonarr call, including apply_window/actions.
+    async with plex.pooled_session(), sonarr.pooled_session(base_url, api_key):
+        managed_series = await sonarr.list_series(base_url, api_key)
+        # Index once; reused as the "managed" set and to hand the SonarrSeries to apply_window (no
+        # per-show find_series_by_tvdb).
+        by_tvdb = {s.tvdb_id: s for s in managed_series}
 
-    # Full vs incremental. FULL scans every show (allLeaves each managed one); INCREMENTAL only the
-    # shows with new plays since the watermark. Full is entered by cause: forced (manual / dep
-    # connection), no watermark yet (first ready), or the rolling floor elapsed (_floor_elapsed).
-    watermark = await store.get_setting(constants.HISTORY_WATERMARK)
-    full = (
-        force_full
-        or watermark is None
-        or _floor_elapsed(await store.get_setting(constants.LAST_FULL_SYNC))
-    )
+        # Full vs incremental. FULL scans every show (allLeaves each managed one); INCREMENTAL only
+        # the shows with new plays since the watermark. Full is entered by cause: forced (manual /
+        # dep connection), no watermark yet (first ready), or the rolling floor elapsed.
+        watermark = await store.get_setting(constants.HISTORY_WATERMARK)
+        full = (
+            force_full
+            or watermark is None
+            or _floor_elapsed(await store.get_setting(constants.LAST_FULL_SYNC))
+        )
 
-    since = None if full or watermark is None else _since(watermark)
-    history = await _watch_history(uri, token, client_id, since)
-    if history is None:  # endpoint failed
-        if not full:
-            # Can't trust an empty delta when the source is down → reconcile fully this cycle.
-            logger.info("Plex history unavailable; promoting incremental sync to full")
-            full = True
-        history = {}
+        since = None if full or watermark is None else _since(watermark)
+        history = await _watch_history(uri, token, client_id, since)
+        if history is None:  # endpoint failed
+            if not full:
+                # Can't trust an empty delta when the source is down → reconcile fully this cycle.
+                logger.info("Plex history unavailable; promoting incremental sync to full")
+                full = True
+            history = {}
 
-    shows, matched = await _apply_watches(uri, token, client_id, history, by_tvdb, full)
+        shows, matched = await _apply_watches(uri, token, client_id, history, by_tvdb, full)
 
-    normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
+        normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
 
-    await _persist_watermark(full, watermark, _history_max(history))
+        await _persist_watermark(full, watermark, _history_max(history))
 
     summary = {
         "shows": shows,

@@ -47,7 +47,9 @@ Modules **by domain**, not by layer (see [`rules.md`](rules.md)). Structure in
   version; no ORM to avoid adding premature abstraction ([`rules.md`](rules.md)).
 - **Own Plex/Sonarr clients with httpx**: the surface used is small and already
   documented; `python-plexapi`/`pyarr` remain as **reference** (they are sync and heavy), not as
-  a dependency, to keep everything async-native.
+  a dependency, to keep everything async-native. Each call opens its own client by default; the sync
+  wraps its cycle in a `pooled_session()` (a `ContextVar`-scoped shared client) so all its calls
+  reuse one connection — the poller/webhook/routes keep the per-call client.
 - **Multi-arch (amd64 + arm64)**: the typical audience for *arr apps runs on NAS/Raspberry Pi. All
   deps ship precompiled wheels (incl. `pydantic-core`), so arm64 compiles nothing.
   Published on **Docker Hub** (`maxlainz/monitorr`) and **GHCR** (`ghcr.io/maxlainz/monitorr`) by
