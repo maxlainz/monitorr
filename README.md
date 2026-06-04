@@ -2,6 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/maxlainz/monitorr?sort=semver)](https://github.com/maxlainz/monitorr/releases)
 [![CI](https://github.com/maxlainz/monitorr/actions/workflows/ci.yml/badge.svg)](https://github.com/maxlainz/monitorr/actions/workflows/ci.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/maxlainz/monitorr?logo=docker)](https://hub.docker.com/r/maxlainz/monitorr)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 monitorr watches which shows you're viewing in **Plex** and, via the **Sonarr** API, keeps
