@@ -4,6 +4,26 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.5.1] - 2026-06-04
+
+### Fixed
+
+- **Watched series no longer re-download themselves (sync anchor regression)**: the incremental sync
+  derived its anchor only from the cycle's live Plex read (`allLeaves` on disk + the history delta),
+  ignoring the persisted watch store. When a watched episode's file had already been trimmed **and**
+  its play predated the history watermark, it was in neither source, so the anchor fell back to the
+  furthest *on-disk* watch and the window slid backward — re-monitoring/searching already-watched
+  back-catalog. Each re-download re-appeared in `allLeaves`, advancing the anchor again, so a
+  fully-watched series re-downloaded itself N episodes per sync cycle. `apply_window` now **floors
+  the anchor at the furthest episode ever recorded as watched** (clamped to one Sonarr lists),
+  enforced for every path (sync, poller, webhook): the persisted, monotonic watch state — not the
+  volatile on-disk state — is the authority for where the window anchors.
+
+### Changed
+
+- A one-time migration drops `last_full_sync` so the first cycle after upgrading runs a **full
+  reconciliation**, re-anchoring and trimming the shows the regression left over-monitored.
+
 ## [1.5.0] - 2026-06-03
 
 ### Added

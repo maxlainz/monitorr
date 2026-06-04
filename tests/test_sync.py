@@ -596,3 +596,125 @@ async def test_full_sync_due_tracks_the_rolling_floor() -> None:
     old = (datetime.now(UTC) - timedelta(days=31)).isoformat()
     await store.set_setting(constants.LAST_FULL_SYNC, old)
     assert await sync.full_sync_due() is True  # past the 30-day floor
+
+
+@respx.mock
+async def test_incremental_sync_does_not_regress_below_recorded_max() -> None:
+    """Incremental repro of the creep: an earlier full sync recorded the furthest watch (S3) but its
+    file is now gone and the play predates the watermark, so this cycle's live read (allLeaves on
+    disk + the history delta) only sees S1. The anchor floor in apply_window keeps the window on S3
+    instead of sliding back and re-searching the already-watched S1 back-catalog."""
+    await _configure_links()  # GET=1, KEEP=1
+    await set_dry_run(False)
+    # Earlier full sync already recorded the furthest watch; make this cycle incremental.
+    await store.record_watch(TVDB, 3, 1)
+    await store.record_watch(TVDB, 3, 2)
+    await store.set_setting(constants.HISTORY_WATERMARK, "2100-01-01T00:00:00+00:00")
+    await store.set_setting(constants.LAST_FULL_SYNC, datetime.now(UTC).isoformat())
+
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"ratingKey": "100", "title": "X", "Guid": [{"id": f"tvdb://{TVDB}"}]}
+                    ]
+                }
+            },
+        )
+    )
+    # On disk only S1 reports watched; S3's files are gone.
+    respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"parentIndex": 1, "index": 1, "viewCount": 1, "lastViewedAt": 1700000000},
+                        {"parentIndex": 1, "index": 2, "viewCount": 1, "lastViewedAt": 1700000100},
+                    ]
+                }
+            },
+        )
+    )
+    # Incremental delta: only a fresh LOW play (re-watch of S1E3) newer than the watermark.
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        side_effect=[_history_play("X", 1, 3, 4102444800)]
+    )
+    episodes = [
+        {
+            "id": 100 + n,
+            "seasonNumber": 1,
+            "episodeNumber": n,
+            "hasFile": n in (1, 2, 3),
+            "episodeFileId": (200 + n) if n in (1, 2, 3) else 0,
+            "monitored": False,
+        }
+        for n in range(1, 9)
+    ] + [
+        {"id": 300 + n, "seasonNumber": 3, "episodeNumber": n, "hasFile": False, "monitored": False}
+        for n in range(1, 4)
+    ]
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=episodes)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
+
+    summary = await sync.run_sync()
+
+    assert summary["matched"] == 1
+    last = await sync.get_last_sync()
+    assert last is not None and last["mode"] == "incremental"
+    # Floored to S3E2 → GET-ahead is S3E3 (303); never re-searches the watched S1 back-catalog.
+    searched = {
+        eid for c in command.calls for eid in json.loads(c.request.content).get("episodeIds", [])
+    }
+    assert searched == {303}
+
+
+async def test_migration_clears_last_full_sync_to_force_full() -> None:
+    """The upgrade migration drops last_full_sync so the first post-upgrade cycle runs a FULL
+    reconciliation, re-anchoring shows the incremental creep left over-monitored."""
+    import pathlib
+    import tempfile
+
+    import aiosqlite
+
+    from monitorr import db
+
+    path = pathlib.Path(tempfile.mkdtemp(prefix="monitorr-mig-")) / "m.db"
+    # Simulate a pre-fix DB (schema v3) with a recorded last full sync.
+    async with aiosqlite.connect(path) as conn:
+        for version in range(3):  # apply the first three migrations
+            await conn.executescript(db.MIGRATIONS[version])
+        await conn.execute("PRAGMA user_version = 3;")
+        await conn.execute(
+            "INSERT INTO setting (key, value) VALUES (?, ?)",
+            (constants.LAST_FULL_SYNC, "2020-01-01T00:00:00+00:00"),
+        )
+        await conn.commit()
+
+    await db.init_db(path)  # applies the pending migration #4
+
+    async with aiosqlite.connect(path) as conn:
+        cur = await conn.execute("PRAGMA user_version;")
+        row = await cur.fetchone()
+        assert row is not None and row[0] == len(db.MIGRATIONS)
+        cur = await conn.execute(
+            "SELECT value FROM setting WHERE key = ?", (constants.LAST_FULL_SYNC,)
+        )
+        assert await cur.fetchone() is None

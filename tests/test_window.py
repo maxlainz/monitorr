@@ -366,3 +366,48 @@ async def test_window_skips_series_put_when_seasons_already_correct() -> None:
     await apply_window(TVDB, season=1, episode=3)
 
     assert not put.called  # idempotent: nothing to change, doesn't rewrite the series
+
+
+@respx.mock
+async def test_anchor_floored_at_persisted_furthest_watch() -> None:
+    """An anchor below the furthest episode ever recorded as watched is re-anchored upward, so the
+    window never slides back and re-downloads already-seen episodes (the sync creep)."""
+    await _configure(always_have=[])  # GET=1, KEEP=1, dry-run ON
+    _mock_sonarr(AHEAD_EPISODES)  # season 1, E1-E7
+    await store.record_watch(TVDB, 1, 5)  # furthest watch on record is E5
+
+    await apply_window(TVDB, season=1, episode=2)  # stale/low anchor E2
+
+    # Floored to E5: KEEP=1 keeps E5 and deletes E1-E4 behind. (Un-floored E2 would have kept E1+E5
+    # and trimmed E4/E5 ahead — the regression.)
+    pending = await store.list_deletions(dry_run=True)
+    assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 2), (1, 3), (1, 4)}
+
+
+@respx.mock
+async def test_anchor_floor_clamps_to_episode_sonarr_lists() -> None:
+    """If the furthest recorded watch isn't an episode Sonarr lists (deleted/absolute/special), the
+    floor clamps to the furthest *real* watched episode instead of no-op'ing the window."""
+    await _configure(always_have=[])  # GET=1, KEEP=1, dry-run ON
+    _mock_sonarr(AHEAD_EPISODES)  # season 1, E1-E7 only
+    await store.record_watch(TVDB, 1, 4)  # real
+    await store.record_watch(TVDB, 2, 1)  # not in Sonarr's episode list → ignored by the clamp
+
+    await apply_window(TVDB, season=1, episode=2)
+
+    # Clamped to E4 (S02E01 ignored): KEEP=1 keeps E4, deletes E1-E3 behind.
+    pending = await store.list_deletions(dry_run=True)
+    assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 2), (1, 3)}
+
+
+@respx.mock
+async def test_anchor_floor_no_op_when_anchor_at_or_above_recorded() -> None:
+    """When the anchor is at or above the recorded furthest watch, the floor changes nothing."""
+    await _configure(always_have=[])  # GET=1, KEEP=1, dry-run ON
+    _mock_sonarr()  # EPISODES E1-E5
+    await store.record_watch(TVDB, 1, 2)  # below the anchor used below
+
+    await apply_window(TVDB, season=1, episode=3)  # anchor E3 ≥ recorded E2 → unchanged
+
+    pending = await store.list_deletions(dry_run=True)
+    assert {(d.season, d.episode) for d in pending} == {(1, 1), (1, 2)}

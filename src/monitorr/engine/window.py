@@ -86,15 +86,40 @@ async def apply_window(
         logger.warning("show tvdb=%s is not in Sonarr", tvdb_id)
         return
 
-    # Enforce season monitoring before touching episodes (cascade-proof order):
-    # if Sonarr propagated the change to the episodes, the GET below re-monitors them.
+    if episodes is None:
+        episodes = await sonarr.get_episodes(base_url, api_key, series.id)
+    real = _real_episodes(episodes)
+
+    # Anchor floor: the window must never apply below the furthest episode ever recorded as
+    # watched, or it slides backward and re-downloads already-seen episodes. The persisted store is
+    # the authority — monotonic, and filled with the complete Plex history on every full sync —
+    # whereas the live sync path under-reports the furthest watch when its file was already trimmed
+    # AND its play predates the incremental watermark (the anchor would then fall back to the
+    # furthest on-disk watch and creep forward N episodes per cycle through an already-seen series).
+    # Enforced here so every caller (sync, poller, webhook) is protected. Clamp to an episode
+    # Sonarr actually lists so a persisted max pointing at a deleted/absolute/special episode can't
+    # no-op the lookup below; this picks the furthest *real* watched episode.
+    real_keys = {(e.season_number, e.episode_number) for e in real}
+    recorded = [w for w in await store.get_watches(tvdb_id) if (w.season, w.episode) in real_keys]
+    floor = max(((w.season, w.episode) for w in recorded), default=(season, episode))
+    if floor > (season, episode):
+        logger.info(
+            "re-anchored tvdb=%s from S%02dE%02d to S%02dE%02d (persisted furthest watch)",
+            tvdb_id,
+            season,
+            episode,
+            floor[0],
+            floor[1],
+        )
+        season, episode = floor
+
+    # Enforce season monitoring (from the floored anchor season) before touching the per-episode
+    # flags (cascade-proof order): if Sonarr propagates the season change to its episodes, the GET
+    # below re-monitors the window and the unmonitor batch clears the rest.
     await actions.set_seasons_monitored(
         base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
     )
 
-    if episodes is None:
-        episodes = await sonarr.get_episodes(base_url, api_key, series.id)
-    real = _real_episodes(episodes)
     idx = next(
         (
             i
@@ -106,22 +131,6 @@ async def apply_window(
     if idx is None:
         logger.warning("S%02dE%02d not found in Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
-
-    # Anchor-regression guard (diagnostics): the window must never apply below the furthest
-    # recorded watch, or it slides backward and re-downloads already-seen episodes. Gated so the
-    # extra read only happens under DEBUG.
-    if logger.isEnabledFor(logging.DEBUG):
-        recorded = await store.get_watches(tvdb_id)
-        max_watch = max(((w.season, w.episode) for w in recorded), default=(season, episode))
-        if (season, episode) < max_watch:
-            logger.warning(
-                "anchor regression tvdb=%s: applying S%02dE%02d below recorded max S%02dE%02d",
-                tvdb_id,
-                season,
-                episode,
-                max_watch[0],
-                max_watch[1],
-            )
 
     # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)

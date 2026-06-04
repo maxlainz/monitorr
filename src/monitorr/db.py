@@ -51,6 +51,11 @@ MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX deletion_pending_unique
         ON deletion_log (tvdb_id, season, episode) WHERE dry_run = 1;
     """,
+    # Force one full reconciliation after upgrading to the anchor-floor fix: incremental syncs
+    # could previously anchor below the furthest watch and leave back-catalog over-monitored.
+    # Dropping last_full_sync makes the next cycle a FULL sync, which re-anchors and trims every
+    # managed show once; _persist_watermark re-stamps it afterward (no-op on a fresh DB).
+    "DELETE FROM setting WHERE key = 'last_full_sync';",
 ]
 
 
