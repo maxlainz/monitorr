@@ -170,6 +170,19 @@ timer:
 `last_sync` records the `mode` (`full`/`incremental`) for the UI. Cost a full incurs (per-show
 `allLeaves` + full history pagination) is the cost incremental avoids.
 
+**Anchor floor (regression guard).** The sync derives its anchor from the live Plex read of the
+cycle (`allLeaves` + the history delta), which can **under-report the furthest watch on an
+incremental cycle**: if that episode's file was already trimmed **and** its play predates the
+watermark it is in neither source, so the live anchor falls back to the furthest *on-disk* watch.
+Left unchecked the window slides backward and re-downloads an already-seen series N episodes per
+cycle (each re-download re-appears in `allLeaves`, advancing the anchor again). To prevent this,
+`apply_window` **floors the anchor at the furthest episode ever recorded as watched** in the
+persisted store (`episode_watch` — monotonic, filled with the complete history on every full sync),
+clamped to an episode Sonarr lists. The floor is enforced in `engine/window.py` for **every** path
+(sync, poller, webhook), so the persisted watch state — not the volatile on-disk state — is the
+authority for where the window anchors. The poller/webhook also pre-compute this max before calling
+`apply_window`; the central floor makes it robust regardless of the caller.
+
 Both modes also **normalize** unwatched shows and **re-search Sonarr's Wanted/Missing**: every
 managed show's episodes that are still **monitored, already aired and without a file** are searched
 again (`EpisodeSearch`), **excluding** the ones already downloading (present in Sonarr's `queue`).
