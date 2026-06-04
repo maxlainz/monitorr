@@ -220,26 +220,48 @@ async def test_forward_trim_respects_always_have() -> None:
 
 
 @respx.mock
-async def test_unmonitors_watched_kept_episodes_without_deleting() -> None:
-    # Whole season protected from deletion (Always-Have S*) + preload by episodes (GET=1).
+async def test_always_have_keeps_every_episode_monitored_without_deleting() -> None:
+    # Whole show is Always-Have (S*): nothing is deleted AND nothing is unmonitored — every
+    # episode stays monitored so Sonarr can upgrade it (the user marked the whole show to keep).
     await _configure(always_have=["S*"])
     await set_dry_run(False)
     routes = _mock_sonarr(AHEAD_EPISODES)
 
-    await apply_window(TVDB, season=1, episode=3)  # anchor E3, GET=1 → keeps E4 monitored
+    await apply_window(TVDB, season=1, episode=3)  # anchor E3, GET=1
 
-    # Nothing is deleted: S* protects every episode's file.
-    assert not routes["delete"].called
-    # But the watched/kept episodes on disk (E1-E3, E5) and the fileless E6 are unmonitored,
-    # so the season never becomes fully monitored (no season-pack upgrade). E4 stays monitored.
+    assert not routes["delete"].called  # S* protects every file
     monitor_payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
     unmonitored = {
         eid for p in monitor_payloads if p["monitored"] is False for eid in p["episodeIds"]
     }
     monitored = {eid for p in monitor_payloads if p["monitored"] is True for eid in p["episodeIds"]}
-    assert {101, 102, 103, 105, 106} <= unmonitored
-    assert 104 in monitored
-    assert 104 not in unmonitored
+    assert unmonitored == set()  # nothing is unmonitored
+    assert {101, 102, 103, 104, 105, 106, 107} <= monitored  # all stay monitored
+
+
+@respx.mock
+async def test_always_have_pilot_stays_monitored_while_others_unmonitored() -> None:
+    # Partial Always-Have (pilot only): the pilot stays monitored (so Sonarr can upgrade it) and
+    # is never deleted, while the ordinary kept/watched episodes outside GET are unmonitored — so
+    # the season is NOT fully monitored and stays season-pack-proof.
+    await _configure(always_have=["S01E01"])
+    await set_dry_run(False)
+    routes = _mock_sonarr(AHEAD_EPISODES)
+
+    await apply_window(TVDB, season=1, episode=3)  # anchor E3, GET=1 → E4 ahead
+
+    monitor_payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in monitor_payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    unmonitored = {
+        eid for p in monitor_payloads if p["monitored"] is False for eid in p["episodeIds"]
+    }
+    assert 101 in monitored  # pilot kept monitored for upgrades
+    assert 101 not in unmonitored
+    assert 104 in monitored  # GET window
+    assert {103, 106} <= unmonitored  # ordinary kept/watched episodes are unmonitored
+    # The pilot's file is protected; only ordinary surplus is deleted (E2 keep, E5 ahead).
+    deleted = {(d.episode, d.reason) for d in await store.list_deletions(dry_run=False)}
+    assert deleted == {(2, "keep"), (5, "ahead")}
 
 
 @respx.mock

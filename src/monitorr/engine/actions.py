@@ -43,10 +43,12 @@ async def set_seasons_monitored(
 async def unmonitor_episodes(
     base_url: str, api_key: str, episode_ids: list[int], dry_run: bool
 ) -> None:
-    """Unmonitors every episode outside the GET window — including watched/kept ones still on
-    disk (KEEP or Always-Have). Monitoring is decoupled from deletion: the file stays, but Sonarr
-    stops trying to upgrade it, so a fully-monitored season never triggers a season-pack grab of
-    episodes that won't be re-watched. Guarded by dry-run."""
+    """Unmonitors every episode outside the GET window that isn't Always-Have — the watched anchor
+    and the kept-behind (KEEP) episodes still on disk. Monitoring is decoupled from deletion: the
+    file stays, but Sonarr stops trying to upgrade it, so a season of merely-kept episodes never
+    reaches the all-monitored state that triggers a season-pack grab of episodes that won't be
+    re-watched. Always-Have episodes stay monitored on purpose (so they can be upgraded). Guarded
+    by dry-run."""
     if not episode_ids:
         return
     if dry_run:
@@ -94,26 +96,32 @@ async def normalize_to_pilot(
     always_have: list[str],
     dry_run: bool,
 ) -> None:
-    """Leaves only the pilot (S01E01) monitored. Already-downloaded episodes that get
-    unmonitored are **deleted** (except Always-Have); the pilot is searched if it lacks a file."""
+    """Leaves only the pilot (S01E01) plus the Always-Have episodes monitored — these stay
+    monitored so Sonarr can upgrade them. Already-downloaded episodes that get unmonitored are
+    **deleted** (except Always-Have); the pilot is searched if it lacks a file."""
     # Seasons to off first (cascade-proof order): this way Sonarr doesn't re-monitor by
-    # season the episodes it discovers; the pilot is re-monitored at the end.
+    # season the episodes it discovers; the pilot/Always-Have are re-monitored at the end.
     await set_seasons_monitored(
         base_url, api_key, series.id, {s.season_number: False for s in series.seasons}, dry_run
     )
     pilot = next((e for e in episodes if e.season_number == 1 and e.episode_number == 1), None)
     pilot_id = pilot.id if pilot else None
 
+    always_have_ids = {
+        e.id
+        for e in episodes
+        if matches_always_have(always_have, e.season_number, e.episode_number)
+    }
     # Downloaded (not pilot, not protected) that stop being monitored → deleted.
     to_delete = [
-        e
-        for e in episodes
-        if e.id != pilot_id
-        and e.has_file
-        and not matches_always_have(always_have, e.season_number, e.episode_number)
+        e for e in episodes if e.id != pilot_id and e.has_file and e.id not in always_have_ids
     ]
     delete_ids = {e.id for e in to_delete}
-    to_unmonitor = [e.id for e in episodes if e.id != pilot_id and e.id not in delete_ids]
+    to_unmonitor = [
+        e.id
+        for e in episodes
+        if e.id != pilot_id and e.id not in delete_ids and e.id not in always_have_ids
+    ]
 
     for episode in to_delete:
         await delete_episode(base_url, api_key, tvdb_id, episode, "normalize", dry_run)
@@ -125,13 +133,16 @@ async def normalize_to_pilot(
     await cancel_downloads(base_url, api_key, to_unmonitor, dry_run)
 
     if dry_run:
-        logger.info("[dry-run] would leave only the pilot monitored in %s", series.title)
+        logger.info("[dry-run] would leave the pilot and Always-Have monitored in %s", series.title)
         return
 
-    if pilot is not None:
-        await sonarr.set_monitored(base_url, api_key, [pilot.id], True)
-        if not pilot.has_file:
-            await sonarr.search_episodes(base_url, api_key, [pilot.id])
+    # Pilot + Always-Have stay monitored so Sonarr can upgrade them (and re-fetch if missing,
+    # via the sync's re-search of monitored/aired/no-file episodes).
+    to_keep_monitored = always_have_ids | ({pilot.id} if pilot else set())
+    if to_keep_monitored:
+        await sonarr.set_monitored(base_url, api_key, sorted(to_keep_monitored), True)
+    if pilot is not None and not pilot.has_file:
+        await sonarr.search_episodes(base_url, api_key, [pilot.id])
 
 
 async def delete_episode(

@@ -56,16 +56,19 @@ async def test_normalize_keeps_always_have_file() -> None:
     delete = respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
         return_value=httpx.Response(200)
     )
-    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    monitor = respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
     respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
     respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
 
-    # E2 protected by Always-Have: it's unmonitored but NOT deleted.
+    # E2 protected by Always-Have: it's NOT deleted and stays monitored (so Sonarr can upgrade it).
     await actions.normalize_to_pilot(
         "http://sonarr:8989", "key", TVDB, SERIES, EPISODES, ["S01E02"], False
     )
 
     assert not delete.called
+    monitor_payloads = [json.loads(c.request.content) for c in monitor.calls]
+    monitored = {eid for p in monitor_payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert {101, 102} <= monitored  # pilot + Always-Have E2 stay monitored
 
 
 @respx.mock

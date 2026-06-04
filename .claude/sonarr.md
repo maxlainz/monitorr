@@ -71,7 +71,9 @@ The episode coming from Plex is located by filtering on `seasonNumber` + `episod
   that season are monitored. monitorr deliberately avoids that state by **unmonitoring
   watched/kept episodes** (keeping their file) once they leave the GET window, so a season is
   never 100% monitored and Sonarr can't grab a season-pack "upgrade" — see `behavior.md`
-  (monitoring decoupled from retention).
+  (monitoring decoupled from retention). *Always-Have* episodes are the exception: they stay
+  monitored (so they can be upgraded), so a season fully covered by an Always-Have pattern can
+  reach the all-monitored state — accepted, since those are episodes marked to keep forever.
 - There is no officially documented rate limit; even so, batch them (`episodeIds: [..]`) instead
   of one call per episode.
 - `DELETE /api/v3/episode/{id}` doesn't exist; to "drop" an episode without deleting the file use
