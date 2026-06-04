@@ -39,22 +39,27 @@ Two parameters, configurable in **episodes or seasons**:
   rest, older than the KEEP window, is **deleted** (`episodefile` delete) and
   **unmonitored** (reason `keep`), unless protected by *Always-Have*.
 
-**Monitoring is decoupled from retention**: `monitored ≡ GET window`. Only the GET-ahead
-episodes stay monitored (what monitorr actively wants Sonarr to fetch/upgrade); **everything
-else is unmonitored while keeping its file** — the just-watched anchor, the kept-behind
-episodes (KEEP) and the on-disk episodes protected by *Always-Have*. The file is retained by
-KEEP/Always-Have; the monitoring is dropped so Sonarr never tries to **upgrade** an episode
-that won't be re-watched, and a season never reaches the *all-episodes-monitored* state that
-lets Sonarr grab a **season-pack upgrade** (see `sonarr.md`). Unmonitoring is non-destructive
-(no preview/log entry like deletions). In by-seasons mode the GET-window **seasons** stay
-monitored at the season level (so new episodes inherit it), while their already-watched
+**Monitoring is decoupled from retention**: `monitored ≡ GET window ∪ Always-Have`. The GET-ahead
+episodes **and** the *Always-Have* episodes stay monitored — what monitorr actively wants Sonarr to
+fetch/**upgrade**; Always-Have episodes stay monitored on purpose so Sonarr can upgrade them in
+place (and re-fetch them if their file is missing). **Everything else is unmonitored while keeping
+its file** — the just-watched anchor and the kept-behind episodes (KEEP). Their file is retained by
+KEEP; the monitoring is dropped so Sonarr never tries to **upgrade** an episode that won't be
+re-watched, and a season of merely-kept episodes never reaches the *all-episodes-monitored* state
+that lets Sonarr grab a **season-pack upgrade** (see `sonarr.md`). The exception is a season fully
+covered by an Always-Have pattern (`S*`/`S02`): every episode there is monitored (and is one the
+user marked to keep forever), so a season-pack upgrade of those is acceptable. Unmonitoring is
+non-destructive (no preview/log entry like deletions). In by-seasons mode the GET-window **seasons**
+stay monitored at the season level (so new episodes inherit it), while their already-watched
 **episodes** are unmonitored individually — the season-pack-proof combination.
 
 ## Always-Have (protection)
 
 Episodes that are **never** deleted even if they fall outside KEEP or a grace period. Patterns:
 `S01E01` (pilot), `S*E01` (first episode of each season), `S*` (full season). It's
-the first check before any deletion.
+the first check before any deletion. Unlike the merely-kept episodes (anchor/KEEP), Always-Have
+episodes also **stay monitored** — the only protection that keeps both the file **and** the
+monitoring — so Sonarr can upgrade them in place (and re-fetch them if their file is missing).
 
 ## Grace periods (deletion by inactivity)
 
@@ -109,10 +114,11 @@ real deletions is always kept.
 
 ## Normalize to Pilot
 
-Leaves **only the pilot** (`S01E01`) monitored, searching for it if it's missing a file. The
-**already-downloaded** episodes that end up unmonitored are **deleted** (except Always-Have) —
-unmonitoring an episode on disk implies deleting it. From there the window (GET) monitors forward
-episode by episode. It removes the need to configure "Monitor: Pilot" by hand in Sonarr.
+Leaves the pilot (`S01E01`) **and the Always-Have episodes** monitored (so Sonarr can upgrade
+them), searching for the pilot if it's missing a file. The **already-downloaded** episodes that end
+up unmonitored are **deleted** (except Always-Have) — unmonitoring an episode on disk implies
+deleting it. From there the window (GET) monitors forward episode by episode. It removes the need to
+configure "Monitor: Pilot" by hand in Sonarr.
 
 It's **automatic (set-and-forget)** and its **only trigger is the
 [sync](#sync--reconciliation)**: each cycle it normalizes every managed show
@@ -226,7 +232,11 @@ dry-run.
 - **Season-pack upgrade on a fully-monitored season**: prevented because watched/kept episodes
   are **unmonitored** (file kept) once they leave the GET window — the season never reaches the
   all-episodes-monitored state Sonarr requires to accept a season pack, so it can't re-download
-  ~hundreds of GB as an "upgrade" of episodes that won't be re-watched.
+  ~hundreds of GB as an "upgrade" of episodes that won't be re-watched. *Exception*: a season fully
+  covered by an Always-Have pattern (`S*`/`S02`) keeps all its episodes monitored (so they can be
+  upgraded), which can let Sonarr grab a season-pack upgrade — accepted, since every episode there
+  is one the user marked to keep forever. The season-pack guard still cancels any queued episode
+  that is **not** in GET ∪ KEEP ∪ Always-Have.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**

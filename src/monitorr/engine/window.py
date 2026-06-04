@@ -134,6 +134,15 @@ async def apply_window(
 
     # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)
+    ahead_ids = {e.id for e in ahead}
+    # Always-Have episodes stay monitored too, so Sonarr can upgrade them in place (and re-fetch
+    # them if their file is missing — consistent with "always have this episode"). Computed once
+    # and reused by the unmonitor batch and the season-pack guard below.
+    always_have_ids = {
+        e.id
+        for e in real
+        if matches_always_have(policy.always_have, e.season_number, e.episode_number)
+    }
     # search_ahead = the GET window without a file = what gets searched (and can drag in a season
     # pack of already-watched episodes). The most important line when chasing the re-import bug.
     search_ahead = [e for e in ahead if not e.has_file]
@@ -152,12 +161,12 @@ async def apply_window(
         [(e.season_number, e.episode_number) for e in ahead],
         [(e.season_number, e.episode_number) for e in search_ahead],
     )
-    if ahead:
-        await actions.monitor_episodes(base_url, api_key, [e.id for e in ahead], dry_run)
-        if policy.search_on_get:
-            await actions.search_episodes(base_url, api_key, [e.id for e in search_ahead], dry_run)
+    monitor_ids = ahead_ids | always_have_ids
+    if monitor_ids:
+        await actions.monitor_episodes(base_url, api_key, sorted(monitor_ids), dry_run)
+    if policy.search_on_get and search_ahead:
+        await actions.search_episodes(base_url, api_key, [e.id for e in search_ahead], dry_run)
 
-    ahead_ids = {e.id for e in ahead}
     deleted_ids: set[int] = set()
 
     # Trim ahead: on-disk episodes beyond the GET window are deleted (symmetric to KEEP),
@@ -187,14 +196,19 @@ async def apply_window(
         await actions.delete_episode(base_url, api_key, tvdb_id, candidate, "keep", dry_run)
         deleted_ids.add(candidate.id)
 
-    # Monitoring is decoupled from deletion: monitorr keeps monitored ONLY the GET window (what
-    # it actively wants Sonarr to fetch/upgrade). Everything else still monitored — the watched
-    # anchor, kept-behind episodes and on-disk episodes protected by Always-Have — is unmonitored
-    # while keeping its file, so Sonarr never sees a fully-monitored season and grabs a
-    # season-pack "upgrade" of episodes that won't be re-watched. delete_episode already
-    # unmonitors what it removes, so exclude deleted_ids.
+    # Monitoring is decoupled from deletion: monitorr keeps monitored the GET window plus the
+    # Always-Have episodes (what it actively wants Sonarr to fetch/upgrade). Everything else still
+    # monitored — the watched anchor and the kept-behind episodes (KEEP) — is unmonitored while
+    # keeping its file, so a season of merely-kept episodes never reaches the all-monitored state
+    # that lets Sonarr grab a season-pack "upgrade" of episodes that won't be re-watched.
+    # delete_episode already unmonitors what it removes, so exclude deleted_ids.
     to_unmonitor = [
-        e.id for e in real if e.id not in ahead_ids and e.monitored and e.id not in deleted_ids
+        e.id
+        for e in real
+        if e.id not in ahead_ids
+        and e.id not in always_have_ids
+        and e.monitored
+        and e.id not in deleted_ids
     ]
     await actions.unmonitor_episodes(base_url, api_key, to_unmonitor, dry_run)
 
@@ -206,11 +220,7 @@ async def apply_window(
     in_window_ids = set(ahead_ids)
     protected = keep_protected_keys(real, idx, policy)
     in_window_ids |= {e.id for e in real if (e.season_number, e.episode_number) in protected}
-    in_window_ids |= {
-        e.id
-        for e in real
-        if matches_always_have(policy.always_have, e.season_number, e.episode_number)
-    }
+    in_window_ids |= always_have_ids
     queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
     surplus = [e.id for e in real if e.id in queued and e.id not in in_window_ids]
     logger.debug(

@@ -4,6 +4,21 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.6.0] - 2026-06-04
+
+### Changed
+
+- **Always-Have episodes now stay monitored so Sonarr can upgrade them**: previously they were kept
+  on disk but **unmonitored** once outside the GET window, which hid them from Sonarr's upgrade
+  logic. The monitoring invariant is now `monitored ≡ GET window ∪ Always-Have`: Always-Have
+  episodes (e.g. the pilot) stay monitored — and are re-monitored after the season cascade — so
+  Sonarr can upgrade them in place and re-fetch them if their file is missing. Applied in both the
+  watch window and **Normalize to Pilot**. The just-watched anchor and the kept-behind (KEEP)
+  episodes are still unmonitored-while-kept, so a season of merely-kept episodes stays
+  season-pack-proof; a season fully covered by an Always-Have pattern (`S*`/`S02`) may allow a
+  season-pack upgrade of episodes the user marked to keep forever (accepted), and the season-pack
+  guard still cancels any non-Always-Have surplus from the queue.
+
 ## [1.5.1] - 2026-06-04
 
 ### Fixed
