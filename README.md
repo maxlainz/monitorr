@@ -61,7 +61,7 @@ Create a `docker-compose.yml` (or use the one in this repo):
 ```yaml
 services:
   monitorr:
-    image: ghcr.io/maxlainz/monitorr:latest   # or maxlainz/monitorr:latest (Docker Hub)
+    image: maxlainz/monitorr:latest   # or ghcr.io/maxlainz/monitorr:latest (GHCR)
     container_name: monitorr
     ports:
       - "8080:8080"
@@ -89,11 +89,11 @@ docker run -d \
   -v "$(pwd)/config:/config" \
   -e TZ=Europe/Madrid \
   --restart unless-stopped \
-  ghcr.io/maxlainz/monitorr:latest
+  maxlainz/monitorr:latest
 ```
 
-Images available on **GHCR** (`ghcr.io/maxlainz/monitorr`) and **Docker Hub**
-(`maxlainz/monitorr`), with tags `:1`, `:1.0`, `:1.0.0` and `:latest` for amd64 and arm64.
+Images available on **Docker Hub** (`maxlainz/monitorr`) and **GHCR**
+(`ghcr.io/maxlainz/monitorr`), with tags `:1`, `:1.0`, `:1.0.0` and `:latest` for amd64 and arm64.
 
 ### First steps
 
