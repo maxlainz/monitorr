@@ -251,6 +251,12 @@ dry-run.
   that is **not** in GET ∪ KEEP ∪ Always-Have.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
+- **"Caught up" assumes linear viewing**: `completed`'s filter compares the **furthest** watch
+  against the last aired episode (`max(watched) ≥ max(aired)`), so a skipped mid-run episode does
+  not block the purge — if you watched the finale but skipped E07, the inactive purge deletes E07
+  too even though it's aired-but-unseen. Strict per-episode checking would instead make `completed`
+  never fire for anyone who skipped a recap. Accepted: skipping an episode of a show you finished
+  reads as "moved on", and Always-Have remains the way to pin specific episodes.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**
   in Settings to limit which playbacks trigger actions; the poller/webhook match by user title and
   the **sync** applies it too, filtering the play history by **accountID** and skipping `allLeaves`
