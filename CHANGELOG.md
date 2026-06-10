@@ -4,7 +4,7 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.6.1] - 2026-06-10
 
 ### Fixed
 
