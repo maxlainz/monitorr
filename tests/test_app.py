@@ -266,6 +266,65 @@ async def test_saving_sonarr_without_plex_does_not_trigger_sync(
     assert calls == []  # only one dependency → no full sync
 
 
+async def test_unlink_clears_per_server_sync_state() -> None:
+    """Unlinking drops the watermark/full stamp with the server: they describe THAT server's
+    history and would make incrementals against the next server skip its plays."""
+    await store.set_setting(constants.PLEX_SERVER_URI, "http://plex:32400")
+    await store.set_setting(constants.PLEX_SERVER_TOKEN, "tok")
+    await store.set_setting(constants.PLEX_SERVER_ID, "srv-1")
+    await store.set_setting(constants.HISTORY_WATERMARK, "2026-01-01T00:00:00+00:00")
+    await store.set_setting(constants.LAST_FULL_SYNC, "2026-01-01T00:00:00+00:00")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/plex/unlink", follow_redirects=False)
+    assert resp.status_code == 303
+    for key in (
+        constants.PLEX_SERVER_ID,
+        constants.HISTORY_WATERMARK,
+        constants.LAST_FULL_SYNC,
+    ):
+        assert await store.get_setting(key) is None
+
+
+@respx.mock
+async def test_switching_servers_resets_per_server_sync_state() -> None:
+    """Linking a different PMS (new clientIdentifier) resets the watermark/full stamp: a
+    carried-over watermark newer than the new server's plays would bury them forever."""
+    await store.set_setting(constants.PLEX_ACCOUNT_TOKEN, "acc-tok")
+    await store.set_setting(constants.PLEX_CLIENT_ID, "cid")
+    await store.set_setting(constants.PLEX_SERVER_ID, "srv-old")
+    await store.set_setting(constants.HISTORY_WATERMARK, "2099-01-01T00:00:00+00:00")
+    await store.set_setting(constants.LAST_FULL_SYNC, "2026-01-01T00:00:00+00:00")
+    respx.get("https://plex.tv/api/v2/resources").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "provides": "server",
+                    "name": "New box",
+                    "clientIdentifier": "srv-new",
+                    "accessToken": "srv-tok",
+                    "connections": [{"uri": "http://plex2:32400", "local": True, "relay": False}],
+                }
+            ],
+        )
+    )
+    respx.get("https://plex.tv/api/v2/user/webhooks").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.post("https://plex.tv/api/v2/user/webhooks").mock(return_value=httpx.Response(201))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/plex/server", data={"client_identifier": "srv-new"}, follow_redirects=False
+        )
+    assert resp.status_code == 303
+    assert await store.get_setting(constants.PLEX_SERVER_ID) == "srv-new"
+    assert await store.get_setting(constants.HISTORY_WATERMARK) is None
+    assert await store.get_setting(constants.LAST_FULL_SYNC) is None
+
+
 async def test_toggle_enabled_preserves_policy_override() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

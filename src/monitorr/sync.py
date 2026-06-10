@@ -106,7 +106,8 @@ async def _run(force_full: bool) -> dict[str, int]:
 
         since = None if full or watermark is None else _since(watermark)
         sweep = await _watch_history(uri, token, client_id, since, account_ids)
-        if sweep is None:  # endpoint failed
+        history_failed = sweep is None
+        if sweep is None:
             if not full:
                 # Can't trust an empty delta when the source is down → reconcile fully this cycle.
                 logger.info("Plex history unavailable; promoting incremental sync to full")
@@ -120,7 +121,12 @@ async def _run(force_full: bool) -> dict[str, int]:
 
         normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
 
-        await _persist_watermark(full, watermark, newest_seen)
+        # A blind sweep must advance nothing: stamping the watermark at "now" would bury the plays
+        # missed during the outage below the incremental floor, and stamping last_full would stop
+        # the promote-to-full degradation for a whole floor interval. Leaving both untouched keeps
+        # every cycle full (library-only reconciliation) until the history endpoint recovers.
+        if not history_failed:
+            await _persist_watermark(full, watermark, newest_seen)
 
     summary = {
         "shows": shows,

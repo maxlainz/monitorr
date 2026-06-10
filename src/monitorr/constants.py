@@ -12,6 +12,9 @@ PLEX_ACCOUNT_TOKEN = "plex_account_token"
 PLEX_SERVER_URI = "plex_server_uri"
 PLEX_SERVER_TOKEN = "plex_server_token"
 PLEX_SERVER_NAME = "plex_server_name"
+# clientIdentifier of the linked PMS: the stable server identity (URIs/names can change), used to
+# detect a server switch and reset the per-server sync state (history watermark, last full).
+PLEX_SERVER_ID = "plex_server_id"
 SONARR_URL = "sonarr_url"
 SONARR_API_KEY = "sonarr_api_key"
 POLICY = "policy"

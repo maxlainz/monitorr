@@ -669,6 +669,37 @@ async def test_incremental_promotes_to_full_when_history_unavailable() -> None:
     assert leaves_a.call_count == 2 and leaves_b.call_count == 2
 
 
+@respx.mock
+async def test_failed_history_advances_neither_watermark_nor_full_stamp(  # noqa: E501
+) -> None:
+    """A blind sweep must not advance the incremental floor (plays missed during the outage would
+    sink below it) nor stamp last_full_sync. After the endpoint recovers, the next incremental
+    sweeps from the pre-outage watermark and catches the outage plays."""
+    await _configure_links()
+    await set_dry_run(False)
+    _mock_two_shows(
+        [
+            _history_play("Alpha", 1, 2, _epoch_days_ago(2)),
+            httpx.Response(500),  # outage
+            _history_play("Alpha", 1, 3, _epoch_days_ago(1)),  # played during the outage
+        ]
+    )
+
+    await sync.run_sync()  # full: stamps watermark + last_full
+    watermark = await store.get_setting(constants.HISTORY_WATERMARK)
+    last_full = await store.get_setting(constants.LAST_FULL_SYNC)
+    assert watermark is not None and last_full is not None
+
+    await sync.run_sync()  # history down → promoted to full, but nothing may advance
+    assert await store.get_setting(constants.HISTORY_WATERMARK) == watermark
+    assert await store.get_setting(constants.LAST_FULL_SYNC) == last_full
+
+    await sync.run_sync()  # recovered → incremental from the pre-outage watermark
+    last = await sync.get_last_sync()
+    assert last is not None and last["mode"] == "incremental"
+    assert (1, 3) in {(w.season, w.episode) for w in await store.get_watches(TVDB)}
+
+
 async def test_full_sync_due_tracks_the_rolling_floor() -> None:
     """full_sync_due (the startup check) needs both deps and is due when no full ran or the rolling
     floor elapsed — a comparison against the last full, so it survives downtime past the floor."""

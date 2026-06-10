@@ -73,6 +73,14 @@ async def _store_server(server: PlexServer) -> bool:
     uri = choose_connection(server.connections)
     if uri is None:
         return False
+    # The sync watermark and full-sync stamp are per-server state: against a different PMS a
+    # carried-over (possibly future) watermark would make incremental sweeps skip its plays
+    # forever. Reset them whenever the linked server identity changes (or was never recorded).
+    previous = await store.get_setting(constants.PLEX_SERVER_ID)
+    if previous != server.client_identifier:
+        await store.delete_setting(constants.HISTORY_WATERMARK)
+        await store.delete_setting(constants.LAST_FULL_SYNC)
+    await store.set_setting(constants.PLEX_SERVER_ID, server.client_identifier)
     await store.set_setting(constants.PLEX_SERVER_URI, uri)
     await store.set_setting(constants.PLEX_SERVER_TOKEN, server.access_token)
     await store.set_setting(constants.PLEX_SERVER_NAME, server.name)
@@ -374,6 +382,10 @@ async def plex_unlink() -> RedirectResponse:
         constants.PLEX_SERVER_URI,
         constants.PLEX_SERVER_TOKEN,
         constants.PLEX_SERVER_NAME,
+        constants.PLEX_SERVER_ID,
+        # Per-server sync state: stale against whatever server gets linked next.
+        constants.HISTORY_WATERMARK,
+        constants.LAST_FULL_SYNC,
     ):
         await store.delete_setting(key)
     return RedirectResponse(url="/settings", status_code=303)
