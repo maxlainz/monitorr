@@ -93,6 +93,18 @@ deletable because the show is finished/abandoned (already gated on caught-up/ina
 KEEP predicate lives in `engine/window.py` (`keep_protected_keys`). **Always-Have** remains the only
 protection that overrides *every* deletion path.
 
+**The GET arm is gated by the graces' inactivity clock.** Once a show has been inactive longer
+than `dormant` or `unwatched` (whichever is assigned and smaller), `apply_window` stops arming the
+GET window: nothing ahead is monitored or searched, in seasons mode every season is left OFF (new
+episodes must not inherit monitoring), the still-monitored GET edge is unmonitored (file untouched)
+and in-flight ahead downloads are pulled from the queue. Without the gate, every **full sync**
+re-applied the window of an abandoned show — re-downloading the GET window for the next grace sweep
+to delete, an endless download/delete oscillation. The spatial trims and Always-Have are unaffected.
+A live watch records activity **before** applying the window, so resuming the show re-arms GET
+naturally. `completed` intentionally does **not** gate: a caught-up show must re-arm when a new
+season airs (see "GET re-arms" above). Implemented as `_is_armed` in `engine/window.py`, sharing
+`age_days` with the sweep.
+
 Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
 per show/episode (last watched, first unwatched, last activity). They respect Always-Have. Implemented
 in `engine/grace.py`; `completed` is evaluated before `dormant` so a caught-up purge is logged with

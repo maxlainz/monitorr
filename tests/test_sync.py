@@ -11,6 +11,12 @@ PLEX = "http://plex:32400"
 SONARR = "http://sonarr:8989/api/v3"
 TVDB = 999
 
+
+def _epoch_days_ago(days: float) -> int:
+    """Recent Plex epoch timestamps: plays must look fresh or the window's re-arm gate
+    (inactivity past dormant/unwatched grace) would legitimately suppress the GET arm."""
+    return int((datetime.now(UTC) - timedelta(days=days)).timestamp())
+
 EPISODES = [
     {
         "id": 101,
@@ -228,9 +234,24 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
             json={
                 "MediaContainer": {
                     "Metadata": [
-                        {"parentIndex": 1, "index": 1, "viewCount": 1, "lastViewedAt": 1700000000},
-                        {"parentIndex": 1, "index": 2, "viewCount": 1, "lastViewedAt": 1700000100},
-                        {"parentIndex": 1, "index": 5, "viewCount": 1, "lastViewedAt": 1700000500},
+                        {
+                            "parentIndex": 1,
+                            "index": 1,
+                            "viewCount": 1,
+                            "lastViewedAt": _epoch_days_ago(30),
+                        },
+                        {
+                            "parentIndex": 1,
+                            "index": 2,
+                            "viewCount": 1,
+                            "lastViewedAt": _epoch_days_ago(29),
+                        },
+                        {
+                            "parentIndex": 1,
+                            "index": 5,
+                            "viewCount": 1,
+                            "lastViewedAt": _epoch_days_ago(28),
+                        },
                     ]
                 }
             },
@@ -249,14 +270,14 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
                             "grandparentTitle": "X",
                             "parentIndex": 3,
                             "index": 2,
-                            "viewedAt": 1710000200,
+                            "viewedAt": _epoch_days_ago(1),
                         },
                         {
                             "type": "episode",
                             "grandparentTitle": "X",
                             "parentIndex": 3,
                             "index": 1,
-                            "viewedAt": 1710000100,
+                            "viewedAt": _epoch_days_ago(1.1),
                         },
                     ]
                 }

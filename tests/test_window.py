@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import respx
@@ -388,6 +389,82 @@ async def test_window_skips_series_put_when_seasons_already_correct() -> None:
     await apply_window(TVDB, season=1, episode=3)
 
     assert not put.called  # idempotent: nothing to change, doesn't rewrite the series
+
+
+def _days_ago(days: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
+@respx.mock
+async def test_get_window_gated_when_inactive_past_grace() -> None:
+    """A show inactive past dormant/unwatched grace must not re-arm its GET window: the grace
+    sweep deletes exactly what GET downloads, so every full sync would otherwise re-download N
+    episodes for the next sweep to delete (an endless oscillation). Trims still run; the GET
+    window is unmonitored instead of searched."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], dormant_days=30))
+    await set_dry_run(False)
+    routes = _mock_sonarr(AHEAD_EPISODES)
+    await store.record_watch(TVDB, 1, 2, watched_at=_days_ago(60))  # inactive 60d > dormant 30d
+
+    await apply_window(TVDB, season=1, episode=2)  # anchor E2, GET=1 → ahead would be E3
+
+    assert not routes["command"].called  # nothing searched
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    unmonitored = {eid for p in payloads if p["monitored"] is False for eid in p["episodeIds"]}
+    assert monitored == set()  # GET window not armed (no Always-Have configured)
+    assert 103 in unmonitored  # the would-be GET edge (E3) is unmonitored, file left to grace
+    # The spatial trims are unchanged: E1 behind (keep) and E4/E5 beyond GET (ahead).
+    done = await store.list_deletions(dry_run=False)
+    assert {(d.episode, d.reason) for d in done} == {(1, "keep"), (4, "ahead"), (5, "ahead")}
+
+
+@respx.mock
+async def test_get_window_rearms_with_fresh_activity() -> None:
+    """Fresh activity (a live watch records it before applying the window) re-arms GET."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], dormant_days=30))
+    await set_dry_run(False)
+    routes = _mock_sonarr()  # EPISODES: E4 has no file
+    await store.record_watch(TVDB, 1, 3)  # fresh activity (now)
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    assert routes["command"].called  # E4 searched: the window is armed again
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert 104 in monitored
+
+
+@respx.mock
+async def test_gated_window_turns_seasons_off_in_seasons_mode() -> None:
+    """In seasons mode a gated window leaves every season OFF: new episodes inherit the season
+    flag, and an abandoned show must not auto-download them via Sonarr's RSS."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(
+        Policy(get_count=1, get_unit="seasons", keep_count=1, always_have=[], dormant_days=30)
+    )
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": True},
+            {"seasonNumber": 2, "monitored": True},
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+    await store.record_watch(TVDB, 1, 3, watched_at=_days_ago(60))
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    body = json.loads(put.calls[0].request.content)
+    assert {s["seasonNumber"]: s["monitored"] for s in body["seasons"]} == {1: False, 2: False}
 
 
 @respx.mock

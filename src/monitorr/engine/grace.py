@@ -4,23 +4,15 @@ Periodic task that deletes by temporal inactivity, respecting Always-Have and dr
 """
 
 import logging
-from datetime import UTC, datetime
 
 from monitorr import store
 from monitorr.engine.actions import delete_episode
-from monitorr.engine.policy import effective_policy, get_dry_run, matches_always_have
+from monitorr.engine.policy import age_days, effective_policy, get_dry_run, matches_always_have
 from monitorr.engine.window import keep_protected_keys
 from monitorr.sonarr import client as sonarr
 from monitorr.sonarr.client import SonarrEpisode
 
 logger = logging.getLogger(__name__)
-
-
-def _age_days(iso_timestamp: str) -> float:
-    moment = datetime.fromisoformat(iso_timestamp)
-    if moment.tzinfo is None:  # legacy timestamps without a zone → assumed UTC
-        moment = moment.replace(tzinfo=UTC)
-    return (datetime.now(UTC) - moment).total_seconds() / 86400
 
 
 def _is_caught_up(watched_keys: set[tuple[int, int]], all_eps: list[SonarrEpisode]) -> bool:
@@ -57,7 +49,7 @@ async def _sweep_series(
         return
 
     watches = {(w.season, w.episode): w.watched_at for w in await store.get_watches(tvdb_id)}
-    activity_age = _age_days(last_activity)
+    activity_age = age_days(last_activity)
 
     # completed: the show has nothing aired left to watch and has been inactive too long → purge
     # everything deletable (dormant + the "caught up" filter, so it never deletes aired-but-unseen
@@ -110,7 +102,7 @@ async def _sweep_series(
         if watched:
             marker = max(watched, key=lambda item: item[1])[0]
             for episode, seen_at in watched:
-                if episode is marker or _age_days(seen_at) <= policy.grace_watched_days:
+                if episode is marker or age_days(seen_at) <= policy.grace_watched_days:
                     continue
                 if (episode.season_number, episode.episode_number) in kept_keys:
                     continue
