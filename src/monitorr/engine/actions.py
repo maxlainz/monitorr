@@ -27,17 +27,19 @@ async def monitor_episodes(
 
 async def set_seasons_monitored(
     base_url: str, api_key: str, series_id: int, desired: dict[int, bool], dry_run: bool
-) -> None:
+) -> bool:
     """Enforces season-level monitoring so monitorr is the authority there too
-    (new episodes inherit their season's flag). Guarded by dry-run."""
+    (new episodes inherit their season's flag). Guarded by dry-run. Returns whether Sonarr
+    was actually changed (always False in dry-run), so callers can refresh episode snapshots
+    that the season cascade may have invalidated."""
     if not desired:
-        return
+        return False
     if dry_run:
         on = sorted(n for n, m in desired.items() if m)
         off = sorted(n for n, m in desired.items() if not m)
         logger.info("[dry-run] would set monitored seasons on=%s off=%s", on, off)
-        return
-    await sonarr.set_seasons_monitored(base_url, api_key, series_id, desired)
+        return False
+    return await sonarr.set_seasons_monitored(base_url, api_key, series_id, desired)
 
 
 async def unmonitor_episodes(

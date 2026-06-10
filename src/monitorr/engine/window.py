@@ -113,24 +113,36 @@ async def apply_window(
         )
         season, episode = floor
 
-    # Enforce season monitoring (from the floored anchor season) before touching the per-episode
-    # flags (cascade-proof order): if Sonarr propagates the season change to its episodes, the GET
-    # below re-monitors the window and the unmonitor batch clears the rest.
-    await actions.set_seasons_monitored(
-        base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
-    )
+    def _anchor_idx(ordered: list[SonarrEpisode]) -> int | None:
+        return next(
+            (
+                i
+                for i, e in enumerate(ordered)
+                if e.season_number == season and e.episode_number == episode
+            ),
+            None,
+        )
 
-    idx = next(
-        (
-            i
-            for i, e in enumerate(real)
-            if e.season_number == season and e.episode_number == episode
-        ),
-        None,
-    )
+    # Resolve the anchor before any write: an anchor Sonarr doesn't list must abort with no
+    # half-applied season flags.
+    idx = _anchor_idx(real)
     if idx is None:
         logger.warning("S%02dE%02d not found in Sonarr (tvdb=%s)", season, episode, tvdb_id)
         return
+
+    # Enforce season monitoring (from the floored anchor season) before touching the per-episode
+    # flags (cascade-proof order). Sonarr propagates a season flag to its episodes, so a change
+    # invalidates the episode snapshot: the stale `monitored` values would make the unmonitor
+    # batch below skip watched episodes the cascade just re-monitored (which the sync's re-search
+    # would then re-download). Re-fetch so every set is computed from post-cascade flags.
+    if await actions.set_seasons_monitored(
+        base_url, api_key, series.id, _desired_seasons(series, season, policy), dry_run
+    ):
+        real = _real_episodes(await sonarr.get_episodes(base_url, api_key, series.id))
+        idx = _anchor_idx(real)
+        if idx is None:  # the episode list changed under us mid-flight
+            logger.warning("S%02dE%02d vanished from Sonarr (tvdb=%s)", season, episode, tvdb_id)
+            return
 
     # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)

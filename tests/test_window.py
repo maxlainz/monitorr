@@ -391,6 +391,82 @@ async def test_window_skips_series_put_when_seasons_already_correct() -> None:
 
 
 @respx.mock
+async def test_refetches_episodes_after_season_cascade() -> None:
+    """A season-flag change can cascade to its episodes in Sonarr, invalidating the snapshot
+    fetched before the PUT. The window must recompute from fresh flags, or a watched episode the
+    cascade just re-monitored is skipped by the unmonitor batch (and later re-downloaded by the
+    sync's re-search of monitored/no-file episodes)."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(
+        Policy(get_count=1, get_unit="seasons", keep_count=2, always_have=[], search_on_get=False)
+    )
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": False},
+            {"seasonNumber": 2, "monitored": False},  # anchor jumps here → turned ON (cascade)
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    def _s2(num: int, *, monitored: bool) -> dict[str, object]:
+        return {
+            "id": 200 + num,
+            "seasonNumber": 2,
+            "episodeNumber": num,
+            "hasFile": num <= 2,
+            "episodeFileId": (300 + num) if num <= 2 else 0,
+            "monitored": monitored,
+        }
+
+    # Before the season PUT: S02E01 (watched, kept by KEEP=2) is unmonitored. After the PUT the
+    # cascade re-monitored it; only the second fetch shows that.
+    episodes = respx.get("http://sonarr:8989/api/v3/episode")
+    episodes.side_effect = [
+        httpx.Response(
+            200, json=[_s2(1, monitored=False), _s2(2, monitored=False), _s2(3, monitored=False)]
+        ),
+        httpx.Response(
+            200, json=[_s2(1, monitored=True), _s2(2, monitored=True), _s2(3, monitored=True)]
+        ),
+    ]
+    monitor = respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+
+    await apply_window(TVDB, season=2, episode=2)  # anchor S02E02; GET=1 season → ahead S02E03
+
+    assert put.called  # season 2 turned ON
+    assert episodes.call_count == 2  # snapshot refreshed after the cascade
+    payloads = [json.loads(c.request.content) for c in monitor.calls]
+    unmonitored = {eid for p in payloads if p["monitored"] is False for eid in p["episodeIds"]}
+    # S02E01 (201) and the anchor (202) were re-monitored by the cascade: the fresh snapshot lets
+    # the batch unmonitor them, keeping the season pack-proof.
+    assert {201, 202} <= unmonitored
+
+
+@respx.mock
+async def test_missing_anchor_aborts_before_touching_seasons() -> None:
+    """An anchor Sonarr doesn't list must abort with no writes at all — previously the season
+    flags were applied before the anchor lookup, leaving a half-applied window."""
+    await _configure(always_have=[])  # episode mode → desired seasons all OFF
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [{"seasonNumber": 1, "monitored": True}],  # would be turned OFF
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    await apply_window(TVDB, season=9, episode=9)  # not in Sonarr's episode list
+
+    assert not put.called  # no half-applied season flags
+
+
+@respx.mock
 async def test_anchor_floored_at_persisted_furthest_watch() -> None:
     """An anchor below the furthest episode ever recorded as watched is re-anchored upward, so the
     window never slides back and re-downloads already-seen episodes (the sync creep)."""

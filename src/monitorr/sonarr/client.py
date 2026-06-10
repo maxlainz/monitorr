@@ -144,12 +144,14 @@ async def set_monitored(
 
 async def set_seasons_monitored(
     base_url: str, api_key: str, series_id: int, desired: dict[int, bool]
-) -> None:
+) -> bool:
     """Sets `seasons[].monitored` of the series object (GET-modify-PUT, which is how Sonarr
     requires editing seasons). Idempotent: only rewrites if some flag changes. `desired` maps
-    `seasonNumber → monitored`; seasons not listed are not touched."""
+    `seasonNumber → monitored`; seasons not listed are not touched. Returns whether a PUT was
+    issued — Sonarr may cascade a season flag to its episodes, so the caller must re-read any
+    episode snapshot taken before the change."""
     if not desired:
-        return
+        return False
     async with _client(base_url, api_key) as client:
         response = await client.get(f"/series/{series_id}")
         response.raise_for_status()
@@ -161,9 +163,10 @@ async def set_seasons_monitored(
                 season["monitored"] = desired[number]
                 changed = True
         if not changed:
-            return
+            return False
         put = await client.put(f"/series/{series_id}", json=data)
         put.raise_for_status()
+        return True
 
 
 async def search_episodes(base_url: str, api_key: str, episode_ids: list[int]) -> None:
