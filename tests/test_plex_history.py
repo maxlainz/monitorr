@@ -168,9 +168,7 @@ async def test_history_filters_by_account_before_dedup() -> None:
         )
     )
 
-    by_show, newest_seen = await plex.get_watch_history_by_show(
-        PLEX, "tok", "cid", account_ids={7}
-    )
+    by_show, newest_seen = await plex.get_watch_history_by_show(PLEX, "tok", "cid", account_ids={7})
 
     watched = by_show["show"]
     assert {(w.season, w.episode) for w in watched} == {(2, 4)}  # S05E01 (account 1) excluded

@@ -17,6 +17,7 @@ def _epoch_days_ago(days: float) -> int:
     (inactivity past dormant/unwatched grace) would legitimately suppress the GET arm."""
     return int((datetime.now(UTC) - timedelta(days=days)).timestamp())
 
+
 EPISODES = [
     {
         "id": 101,
