@@ -74,6 +74,14 @@ The episode coming from Plex is located by filtering on `seasonNumber` + `episod
   (monitoring decoupled from retention). *Always-Have* episodes are the exception: they stay
   monitored (so they can be upgraded), so a season fully covered by an Always-Have pattern can
   reach the all-monitored state — accepted, since those are episodes marked to keep forever.
+- **`DELETE /api/v3/queue/{id}` cancels the whole download, not one episode**: queue rows are
+  per-episode but map to one tracked download (one torrent), so the season-pack guard pulling a
+  *surplus* episode also drops the **in-window** episodes of that same pack from the queue. Known
+  trade-off: when only season packs exist for a show, the next sync can re-search → re-grab →
+  re-cancel (the guard always wins, nothing surplus is ever imported, but the grab/cancel cycle
+  repeats and the client accumulates the paused/seeding torrent). Accepted for now: the
+  alternative — letting the pack import and trimming after — would land hundreds of GB on disk
+  first.
 - There is no officially documented rate limit; even so, batch them (`episodeIds: [..]`) instead
   of one call per episode.
 - `DELETE /api/v3/episode/{id}` doesn't exist; to "drop" an episode without deleting the file use

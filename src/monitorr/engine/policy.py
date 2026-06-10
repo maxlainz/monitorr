@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -9,6 +10,15 @@ from pydantic import BaseModel, Field
 from monitorr import constants, store
 
 Unit = Literal["episodes", "seasons"]
+
+
+def age_days(iso_timestamp: str) -> float:
+    """Days elapsed since `iso_timestamp` — the clock shared by the grace sweep and the window's
+    re-arm gate, so both judge a show's inactivity identically."""
+    moment = datetime.fromisoformat(iso_timestamp)
+    if moment.tzinfo is None:  # legacy timestamps without a zone → assumed UTC
+        moment = moment.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - moment).total_seconds() / 86400
 
 
 class Policy(BaseModel):

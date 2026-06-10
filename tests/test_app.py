@@ -5,9 +5,11 @@ import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from monitorr import constants, store, sync
-from monitorr.engine.policy import effective_policy, get_global_policy
+from monitorr.config import Settings
+from monitorr.engine.policy import effective_policy, get_global_policy, get_watched_threshold
 from monitorr.main import app
 from monitorr.plex.webhook import get_or_create_webhook_secret, parse_scrobble
 from monitorr.web import routes
@@ -209,6 +211,47 @@ async def test_connecting_both_deps_triggers_full_sync(monkeypatch: pytest.Monke
     assert calls == [True]
 
 
+@respx.mock
+async def test_single_server_link_triggers_full_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The auto-selected single-server link path must fire the same "connection of both deps"
+    full sync as the multi-server choose path (it previously skipped it)."""
+    calls = _capture_run_sync(monkeypatch)
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await store.set_setting(constants.PLEX_CLIENT_ID, "cid")
+    await store.set_setting("plex_pin_id", "123")
+    await store.set_setting("plex_pin_code", "ABCD")
+    respx.get("https://plex.tv/api/v2/pins/123").mock(
+        return_value=httpx.Response(200, json={"authToken": "tok"})
+    )
+    respx.get("https://plex.tv/api/v2/resources").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "provides": "server",
+                    "name": "Home",
+                    "clientIdentifier": "srv-1",
+                    "accessToken": "srv-tok",
+                    "connections": [{"uri": "http://plex:32400", "local": True, "relay": False}],
+                }
+            ],
+        )
+    )
+    respx.get("https://plex.tv/api/v2/user/webhooks").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.post("https://plex.tv/api/v2/user/webhooks").mock(return_value=httpx.Response(201))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/plex/link/poll")
+    await asyncio.sleep(0.05)
+    assert resp.status_code == 200
+    assert "linked" in resp.text or "Home" in resp.text
+    assert calls == [True]
+
+
 async def test_saving_sonarr_without_plex_does_not_trigger_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -223,6 +266,97 @@ async def test_saving_sonarr_without_plex_does_not_trigger_sync(
     await asyncio.sleep(0.05)
     assert resp.status_code == 303
     assert calls == []  # only one dependency → no full sync
+
+
+async def test_policy_form_tolerates_bad_numbers_and_clamps_threshold() -> None:
+    """Non-numeric grace fields must not 500 (they disable the grace), and an out-of-range
+    watched threshold is clamped — >1 would make the live trigger permanently dead."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/settings/policy",
+            data={
+                "grace_watched_days": "abc",
+                "dormant_days": "-5",
+                "watched_threshold": "5",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    policy = await get_global_policy()
+    assert policy.grace_watched_days is None  # bad input → grace disabled, not a 500
+    assert policy.dormant_days is None  # negative would fire unconditionally → disabled
+    assert await get_watched_threshold() == 1.0  # clamped into (0, 1]
+
+
+def test_settings_reject_hot_loop_intervals() -> None:
+    """A zero/negative loop interval would degenerate into a hot loop hammering Plex/Sonarr;
+    the settings fail fast instead. 0 stays valid where it means 'disabled'."""
+    with pytest.raises(ValidationError):
+        Settings(plex_poll_interval=0)
+    with pytest.raises(ValidationError):
+        Settings(grace_sweep_interval=-1)
+    assert Settings(sync_interval=0).sync_interval == 0  # documented "disabled"
+    assert Settings(full_sync_interval=0).full_sync_interval == 0
+
+
+async def test_unlink_clears_per_server_sync_state() -> None:
+    """Unlinking drops the watermark/full stamp with the server: they describe THAT server's
+    history and would make incrementals against the next server skip its plays."""
+    await store.set_setting(constants.PLEX_SERVER_URI, "http://plex:32400")
+    await store.set_setting(constants.PLEX_SERVER_TOKEN, "tok")
+    await store.set_setting(constants.PLEX_SERVER_ID, "srv-1")
+    await store.set_setting(constants.HISTORY_WATERMARK, "2026-01-01T00:00:00+00:00")
+    await store.set_setting(constants.LAST_FULL_SYNC, "2026-01-01T00:00:00+00:00")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/plex/unlink", follow_redirects=False)
+    assert resp.status_code == 303
+    for key in (
+        constants.PLEX_SERVER_ID,
+        constants.HISTORY_WATERMARK,
+        constants.LAST_FULL_SYNC,
+    ):
+        assert await store.get_setting(key) is None
+
+
+@respx.mock
+async def test_switching_servers_resets_per_server_sync_state() -> None:
+    """Linking a different PMS (new clientIdentifier) resets the watermark/full stamp: a
+    carried-over watermark newer than the new server's plays would bury them forever."""
+    await store.set_setting(constants.PLEX_ACCOUNT_TOKEN, "acc-tok")
+    await store.set_setting(constants.PLEX_CLIENT_ID, "cid")
+    await store.set_setting(constants.PLEX_SERVER_ID, "srv-old")
+    await store.set_setting(constants.HISTORY_WATERMARK, "2099-01-01T00:00:00+00:00")
+    await store.set_setting(constants.LAST_FULL_SYNC, "2026-01-01T00:00:00+00:00")
+    respx.get("https://plex.tv/api/v2/resources").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "provides": "server",
+                    "name": "New box",
+                    "clientIdentifier": "srv-new",
+                    "accessToken": "srv-tok",
+                    "connections": [{"uri": "http://plex2:32400", "local": True, "relay": False}],
+                }
+            ],
+        )
+    )
+    respx.get("https://plex.tv/api/v2/user/webhooks").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.post("https://plex.tv/api/v2/user/webhooks").mock(return_value=httpx.Response(201))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/plex/server", data={"client_identifier": "srv-new"}, follow_redirects=False
+        )
+    assert resp.status_code == 303
+    assert await store.get_setting(constants.PLEX_SERVER_ID) == "srv-new"
+    assert await store.get_setting(constants.HISTORY_WATERMARK) is None
+    assert await store.get_setting(constants.LAST_FULL_SYNC) is None
 
 
 async def test_toggle_enabled_preserves_policy_override() -> None:

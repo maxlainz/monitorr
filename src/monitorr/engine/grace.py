@@ -4,23 +4,15 @@ Periodic task that deletes by temporal inactivity, respecting Always-Have and dr
 """
 
 import logging
-from datetime import UTC, datetime
 
 from monitorr import store
 from monitorr.engine.actions import delete_episode
-from monitorr.engine.policy import effective_policy, get_dry_run, matches_always_have
+from monitorr.engine.policy import age_days, effective_policy, get_dry_run, matches_always_have
 from monitorr.engine.window import keep_protected_keys
 from monitorr.sonarr import client as sonarr
 from monitorr.sonarr.client import SonarrEpisode
 
 logger = logging.getLogger(__name__)
-
-
-def _age_days(iso_timestamp: str) -> float:
-    moment = datetime.fromisoformat(iso_timestamp)
-    if moment.tzinfo is None:  # legacy timestamps without a zone → assumed UTC
-        moment = moment.replace(tzinfo=UTC)
-    return (datetime.now(UTC) - moment).total_seconds() / 86400
 
 
 def _is_caught_up(watched_keys: set[tuple[int, int]], all_eps: list[SonarrEpisode]) -> bool:
@@ -57,7 +49,7 @@ async def _sweep_series(
         return
 
     watches = {(w.season, w.episode): w.watched_at for w in await store.get_watches(tvdb_id)}
-    activity_age = _age_days(last_activity)
+    activity_age = age_days(last_activity)
 
     # completed: the show has nothing aired left to watch and has been inactive too long → purge
     # everything deletable (dormant + the "caught up" filter, so it never deletes aired-but-unseen
@@ -89,16 +81,18 @@ async def _sweep_series(
     # guarantees on disk, relative to the latest watched episode (the viewing point). KEEP is the
     # spatial retention guarantee; grace only trims what already falls outside it. (The bulk purges
     # completed/dormant above intentionally ignore KEEP — the show is finished/abandoned.)
+    # The anchor is clamped to a key Sonarr actually lists — same clamp as apply_window's floor:
+    # a recorded watch Sonarr doesn't know (Plex numbering mismatch, removed episode) must pick
+    # the furthest *real* watched episode, not silently dissolve the whole KEEP floor.
     real = sorted(all_eps, key=lambda e: (e.season_number, e.episode_number))
+    real_keys = {(e.season_number, e.episode_number) for e in real}
     kept_keys: set[tuple[int, int]] = set()
-    if watches:
-        anchor = max(watches)  # latest watched in airing order = current viewing point
+    anchor = max((key for key in watches if key in real_keys), default=None)
+    if anchor is not None:
         anchor_idx = next(
-            (i for i, e in enumerate(real) if (e.season_number, e.episode_number) == anchor),
-            None,
+            i for i, e in enumerate(real) if (e.season_number, e.episode_number) == anchor
         )
-        if anchor_idx is not None:
-            kept_keys = keep_protected_keys(real, anchor_idx, policy)
+        kept_keys = keep_protected_keys(real, anchor_idx, policy)
 
     # watched: watched more than X days ago, keeping the most recent one as a marker.
     if policy.grace_watched_days is not None:
@@ -110,7 +104,7 @@ async def _sweep_series(
         if watched:
             marker = max(watched, key=lambda item: item[1])[0]
             for episode, seen_at in watched:
-                if episode is marker or _age_days(seen_at) <= policy.grace_watched_days:
+                if episode is marker or age_days(seen_at) <= policy.grace_watched_days:
                     continue
                 if (episode.season_number, episode.episode_number) in kept_keys:
                     continue

@@ -73,6 +73,14 @@ async def _store_server(server: PlexServer) -> bool:
     uri = choose_connection(server.connections)
     if uri is None:
         return False
+    # The sync watermark and full-sync stamp are per-server state: against a different PMS a
+    # carried-over (possibly future) watermark would make incremental sweeps skip its plays
+    # forever. Reset them whenever the linked server identity changes (or was never recorded).
+    previous = await store.get_setting(constants.PLEX_SERVER_ID)
+    if previous != server.client_identifier:
+        await store.delete_setting(constants.HISTORY_WATERMARK)
+        await store.delete_setting(constants.LAST_FULL_SYNC)
+    await store.set_setting(constants.PLEX_SERVER_ID, server.client_identifier)
     await store.set_setting(constants.PLEX_SERVER_URI, uri)
     await store.set_setting(constants.PLEX_SERVER_TOKEN, server.access_token)
     await store.set_setting(constants.PLEX_SERVER_NAME, server.name)
@@ -234,8 +242,17 @@ def _policy_from_form(
     """Build a Policy from the shared form fields (global and per-series forms)."""
 
     def _opt_int(value: str) -> int | None:
+        """Empty, non-numeric or negative → None (grace disabled), never a 500. A negative number
+        would make the grace fire unconditionally — deletions from a typo — so disabling is the
+        safe reading; 0 stays valid ("immediately")."""
         value = value.strip()
-        return int(value) if value else None
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed >= 0 else None
 
     return Policy(
         get_count=max(0, get_count),
@@ -284,7 +301,11 @@ async def save_policy(
     )
     await set_global_policy(policy)
     await set_dry_run(dry_run is not None)
-    await store.set_setting(constants.WATCHED_THRESHOLD, str(watched_threshold))
+    # Out-of-range thresholds make the live trigger dead (>1: progress can never reach it) or
+    # hair-triggered; clamp to a sane band.
+    await store.set_setting(
+        constants.WATCHED_THRESHOLD, str(min(1.0, max(0.05, watched_threshold)))
+    )
     await store.set_setting(constants.USER_FILTER, json.dumps(_split(user_filter)))
     return RedirectResponse(url="/settings", status_code=303)
 
@@ -334,6 +355,8 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
         )
     if len(servers) == 1 and await _store_server(servers[0]):
         await _try_register_webhook(request)
+        # Same "connection of both deps" trigger as the multi-server path (plex_choose_server).
+        await _maybe_trigger_full_sync()
         return templates.TemplateResponse(
             request, "_plex_link.html", {"state": "linked", "server_name": servers[0].name}
         )
@@ -372,6 +395,10 @@ async def plex_unlink() -> RedirectResponse:
         constants.PLEX_SERVER_URI,
         constants.PLEX_SERVER_TOKEN,
         constants.PLEX_SERVER_NAME,
+        constants.PLEX_SERVER_ID,
+        # Per-server sync state: stale against whatever server gets linked next.
+        constants.HISTORY_WATERMARK,
+        constants.LAST_FULL_SYNC,
     ):
         await store.delete_setting(key)
     return RedirectResponse(url="/settings", status_code=303)

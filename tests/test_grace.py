@@ -219,6 +219,36 @@ async def test_watched_respects_keep_episodes_floor() -> None:
 
 
 @respx.mock
+async def test_keep_floor_clamps_anchor_to_episodes_sonarr_lists() -> None:
+    """A recorded watch Sonarr doesn't list (Plex numbering mismatch, removed episode) must not
+    dissolve the KEEP floor: the anchor clamps to the furthest *real* watched episode — the same
+    clamp apply_window's floor uses. Unclamped, anchor_idx was None and kept_keys empty, letting
+    grace_watched trim the whole watched tail (here E5/E6)."""
+    episodes = [_ep(1, n, has_file=True) for n in range(1, 7)]
+    await _use_policy(
+        Policy(
+            keep_unit="episodes",
+            keep_count=2,
+            grace_watched_days=7,
+            grace_unwatched_days=None,
+            dormant_days=None,
+            grace_completed_days=None,
+        )
+    )
+    _mock(episodes)
+    for n in range(1, 6):
+        await _watch(1, n, days_ago=40)
+    await _watch(1, 6, days_ago=1)  # furthest real watch → anchor + marker
+    await _watch(9, 9, days_ago=1)  # ghost watch not in Sonarr's list → ignored by the clamp
+
+    await sweep()
+
+    pending = await store.list_deletions(dry_run=True)
+    # Same protection as without the ghost: E5/E6 in KEEP, E1 Always-Have, E2-E4 trimmed.
+    assert {(d.season, d.episode) for d in pending} == {(1, 2), (1, 3), (1, 4)}
+
+
+@respx.mock
 async def test_unwatched_respects_keep_floor() -> None:
     episodes = [_ep(1, n, has_file=True) for n in range(1, 6)]
     await _use_policy(

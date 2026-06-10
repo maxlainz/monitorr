@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import respx
@@ -53,6 +54,11 @@ EPISODES = [
         "episodeFileId": 0,
     },
 ]
+
+# Fixtures air in the past: the window only searches aired episodes (unaired are just monitored).
+AIRED_AT = "2020-01-01T00:00:00Z"
+for _episode in EPISODES:
+    _episode["airDateUtc"] = AIRED_AT
 
 
 async def _configure(always_have: list[str]) -> None:
@@ -158,6 +164,7 @@ def _ep(num: int, *, has_file: bool, monitored: bool = True) -> dict[str, object
         "hasFile": has_file,
         "episodeFileId": (200 + num) if has_file else 0,
         "monitored": monitored,
+        "airDateUtc": AIRED_AT,
     }
 
 
@@ -388,6 +395,183 @@ async def test_window_skips_series_put_when_seasons_already_correct() -> None:
     await apply_window(TVDB, season=1, episode=3)
 
     assert not put.called  # idempotent: nothing to change, doesn't rewrite the series
+
+
+def _days_ago(days: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
+@respx.mock
+async def test_unaired_ahead_episodes_are_monitored_but_not_searched() -> None:
+    """The GET window monitors unaired episodes (Sonarr grabs them on air via RSS) but must not
+    search them: that's a guaranteed-empty indexer query on every trigger of a weekly show."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=2, keep_count=1, always_have=[]))
+    await set_dry_run(False)
+    episodes = [dict(e) for e in EPISODES]  # E4/E5 have no file
+    episodes[4]["airDateUtc"] = "2999-01-01T00:00:00Z"  # E5 not aired yet
+    routes = _mock_sonarr(episodes)
+
+    await apply_window(TVDB, season=1, episode=3)  # ahead = E4 (aired) + E5 (unaired)
+
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert {104, 105} <= monitored  # both stay monitored
+    searched = [
+        eid
+        for c in routes["command"].calls
+        for eid in json.loads(c.request.content).get("episodeIds", [])
+    ]
+    assert searched == [104]  # the unaired E5 is not searched
+
+
+@respx.mock
+async def test_get_window_gated_when_inactive_past_grace() -> None:
+    """A show inactive past dormant/unwatched grace must not re-arm its GET window: the grace
+    sweep deletes exactly what GET downloads, so every full sync would otherwise re-download N
+    episodes for the next sweep to delete (an endless oscillation). Trims still run; the GET
+    window is unmonitored instead of searched."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], dormant_days=30))
+    await set_dry_run(False)
+    routes = _mock_sonarr(AHEAD_EPISODES)
+    await store.record_watch(TVDB, 1, 2, watched_at=_days_ago(60))  # inactive 60d > dormant 30d
+
+    await apply_window(TVDB, season=1, episode=2)  # anchor E2, GET=1 → ahead would be E3
+
+    assert not routes["command"].called  # nothing searched
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    unmonitored = {eid for p in payloads if p["monitored"] is False for eid in p["episodeIds"]}
+    assert monitored == set()  # GET window not armed (no Always-Have configured)
+    assert 103 in unmonitored  # the would-be GET edge (E3) is unmonitored, file left to grace
+    # The spatial trims are unchanged: E1 behind (keep) and E4/E5 beyond GET (ahead).
+    done = await store.list_deletions(dry_run=False)
+    assert {(d.episode, d.reason) for d in done} == {(1, "keep"), (4, "ahead"), (5, "ahead")}
+
+
+@respx.mock
+async def test_get_window_rearms_with_fresh_activity() -> None:
+    """Fresh activity (a live watch records it before applying the window) re-arms GET."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=1, keep_count=1, always_have=[], dormant_days=30))
+    await set_dry_run(False)
+    routes = _mock_sonarr()  # EPISODES: E4 has no file
+    await store.record_watch(TVDB, 1, 3)  # fresh activity (now)
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    assert routes["command"].called  # E4 searched: the window is armed again
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert 104 in monitored
+
+
+@respx.mock
+async def test_gated_window_turns_seasons_off_in_seasons_mode() -> None:
+    """In seasons mode a gated window leaves every season OFF: new episodes inherit the season
+    flag, and an abandoned show must not auto-download them via Sonarr's RSS."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(
+        Policy(get_count=1, get_unit="seasons", keep_count=1, always_have=[], dormant_days=30)
+    )
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": True},
+            {"seasonNumber": 2, "monitored": True},
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+    await store.record_watch(TVDB, 1, 3, watched_at=_days_ago(60))
+
+    await apply_window(TVDB, season=1, episode=3)
+
+    body = json.loads(put.calls[0].request.content)
+    assert {s["seasonNumber"]: s["monitored"] for s in body["seasons"]} == {1: False, 2: False}
+
+
+@respx.mock
+async def test_refetches_episodes_after_season_cascade() -> None:
+    """A season-flag change can cascade to its episodes in Sonarr, invalidating the snapshot
+    fetched before the PUT. The window must recompute from fresh flags, or a watched episode the
+    cascade just re-monitored is skipped by the unmonitor batch (and later re-downloaded by the
+    sync's re-search of monitored/no-file episodes)."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(
+        Policy(get_count=1, get_unit="seasons", keep_count=2, always_have=[], search_on_get=False)
+    )
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [
+            {"seasonNumber": 1, "monitored": False},
+            {"seasonNumber": 2, "monitored": False},  # anchor jumps here → turned ON (cascade)
+        ],
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    def _s2(num: int, *, monitored: bool) -> dict[str, object]:
+        return {
+            "id": 200 + num,
+            "seasonNumber": 2,
+            "episodeNumber": num,
+            "hasFile": num <= 2,
+            "episodeFileId": (300 + num) if num <= 2 else 0,
+            "monitored": monitored,
+        }
+
+    # Before the season PUT: S02E01 (watched, kept by KEEP=2) is unmonitored. After the PUT the
+    # cascade re-monitored it; only the second fetch shows that.
+    episodes = respx.get("http://sonarr:8989/api/v3/episode")
+    episodes.side_effect = [
+        httpx.Response(
+            200, json=[_s2(1, monitored=False), _s2(2, monitored=False), _s2(3, monitored=False)]
+        ),
+        httpx.Response(
+            200, json=[_s2(1, monitored=True), _s2(2, monitored=True), _s2(3, monitored=True)]
+        ),
+    ]
+    monitor = respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+
+    await apply_window(TVDB, season=2, episode=2)  # anchor S02E02; GET=1 season → ahead S02E03
+
+    assert put.called  # season 2 turned ON
+    assert episodes.call_count == 2  # snapshot refreshed after the cascade
+    payloads = [json.loads(c.request.content) for c in monitor.calls]
+    unmonitored = {eid for p in payloads if p["monitored"] is False for eid in p["episodeIds"]}
+    # S02E01 (201) and the anchor (202) were re-monitored by the cascade: the fresh snapshot lets
+    # the batch unmonitor them, keeping the season pack-proof.
+    assert {201, 202} <= unmonitored
+
+
+@respx.mock
+async def test_missing_anchor_aborts_before_touching_seasons() -> None:
+    """An anchor Sonarr doesn't list must abort with no writes at all — previously the season
+    flags were applied before the anchor lookup, leaving a half-applied window."""
+    await _configure(always_have=[])  # episode mode → desired seasons all OFF
+    await set_dry_run(False)
+    series_obj = {
+        "id": 1,
+        "title": "X",
+        "tvdbId": TVDB,
+        "seasons": [{"seasonNumber": 1, "monitored": True}],  # would be turned OFF
+    }
+    put = _mock_sonarr_seasons(series_obj)
+
+    await apply_window(TVDB, season=9, episode=9)  # not in Sonarr's episode list
+
+    assert not put.called  # no half-applied season flags
 
 
 @respx.mock

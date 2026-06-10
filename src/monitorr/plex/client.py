@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 from pydantic import BaseModel
@@ -317,9 +317,43 @@ def normalize_title(title: str) -> str:
     return title.strip().casefold()
 
 
+# Local accountID of the server owner in PMS data (history rows, /accounts).
+OWNER_ACCOUNT_ID = 1
+
+
+async def get_accounts(server_uri: str, token: str, client_id: str) -> dict[str, int]:
+    """Server accounts (`GET /accounts`): normalized account name → local accountID. Used to
+    resolve the user filter's names so the history sweep can be filtered by `accountID` (the
+    history rows carry the id, not the name). The owner is `OWNER_ACCOUNT_ID`."""
+    async with _http() as client:
+        response = await client.get(f"{server_uri}/accounts", headers=_headers(token, client_id))
+        response.raise_for_status()
+        container = response.json().get("MediaContainer", {})
+        accounts: dict[str, int] = {}
+        for item in container.get("Account", []):
+            name = normalize_title(str(item.get("name", "")))
+            if name:
+                accounts[name] = int(item.get("id", 0))
+        return accounts
+
+
+class HistorySweep(NamedTuple):
+    """Result of a history sweep: plays grouped by show, plus the newest `viewedAt` *scanned*
+    (pre-filter) so the incremental watermark always advances past everything seen — even when
+    every new play belonged to a filtered-out user (otherwise the incremental window would
+    re-scan an ever-growing tail)."""
+
+    by_show: dict[str, list[WatchedEpisode]]
+    newest_seen: str | None
+
+
 async def get_watch_history_by_show(
-    server_uri: str, token: str, client_id: str, since: str | None = None
-) -> dict[str, list[WatchedEpisode]]:
+    server_uri: str,
+    token: str,
+    client_id: str,
+    since: str | None = None,
+    account_ids: set[int] | None = None,
+) -> HistorySweep:
     """All episode plays from Plex's global play history, grouped by normalized show title.
 
     Unlike `allLeaves`, the play history **persists after the files are deleted**, catching
@@ -335,8 +369,13 @@ async def get_watch_history_by_show(
     so it stops at the first play older than `since` (every later row is older too) and returns only
     the new tail. The caller passes the previous max viewed_at minus a small overlap; re-recording
     an already-seen play is idempotent, so the overlap is safe.
+
+    With `account_ids`, only plays of those local accounts count (the sync-side application of the
+    user filter; rows are filtered **before** the per-episode dedup so a newer play by a filtered
+    user can't shadow an allowed one). `newest_seen` is still tracked pre-filter.
     """
     latest: dict[tuple[str, int, int], str] = {}
+    newest_seen: str | None = None
     start = 0
     page_size = 1000
     pages = 0
@@ -369,6 +408,10 @@ async def get_watch_history_by_show(
                     break
                 if item.get("type") != "episode":
                     continue
+                if newest_seen is None or viewed_at > newest_seen:
+                    newest_seen = viewed_at
+                if account_ids is not None and int(item.get("accountID", 0)) not in account_ids:
+                    continue
                 title = normalize_title(str(item.get("grandparentTitle", "")))
                 if not title:
                     continue
@@ -391,4 +434,4 @@ async def get_watch_history_by_show(
         len(by_show),
         {t: sorted((w.season, w.episode) for w in eps) for t, eps in by_show.items()},
     )
-    return by_show
+    return HistorySweep(by_show, newest_seen)

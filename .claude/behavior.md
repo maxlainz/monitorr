@@ -93,6 +93,18 @@ deletable because the show is finished/abandoned (already gated on caught-up/ina
 KEEP predicate lives in `engine/window.py` (`keep_protected_keys`). **Always-Have** remains the only
 protection that overrides *every* deletion path.
 
+**The GET arm is gated by the graces' inactivity clock.** Once a show has been inactive longer
+than `dormant` or `unwatched` (whichever is assigned and smaller), `apply_window` stops arming the
+GET window: nothing ahead is monitored or searched, in seasons mode every season is left OFF (new
+episodes must not inherit monitoring), the still-monitored GET edge is unmonitored (file untouched)
+and in-flight ahead downloads are pulled from the queue. Without the gate, every **full sync**
+re-applied the window of an abandoned show — re-downloading the GET window for the next grace sweep
+to delete, an endless download/delete oscillation. The spatial trims and Always-Have are unaffected.
+A live watch records activity **before** applying the window, so resuming the show re-arms GET
+naturally. `completed` intentionally does **not** gate: a caught-up show must re-arm when a new
+season airs (see "GET re-arms" above). Implemented as `_is_armed` in `engine/window.py`, sharing
+`age_days` with the sweep.
+
 Each grace is independent; leaving one **unassigned** disables it. It requires **persisting state**
 per show/episode (last watched, first unwatched, last activity). They respect Always-Have. Implemented
 in `engine/grace.py`; `completed` is evaluated before `dormant` so a caught-up purge is logged with
@@ -239,8 +251,16 @@ dry-run.
   that is **not** in GET ∪ KEEP ∪ Always-Have.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
+- **"Caught up" assumes linear viewing**: `completed`'s filter compares the **furthest** watch
+  against the last aired episode (`max(watched) ≥ max(aired)`), so a skipped mid-run episode does
+  not block the purge — if you watched the finale but skipped E07, the inactive purge deletes E07
+  too even though it's aired-but-unseen. Strict per-episode checking would instead make `completed`
+  never fire for anyone who skipped a recap. Accepted: skipping an episode of a show you finished
+  reads as "moved on", and Always-Have remains the way to pin specific episodes.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**
-  in Settings to limit which playbacks trigger actions.
+  in Settings to limit which playbacks trigger actions; the poller/webhook match by user title and
+  the **sync** applies it too, filtering the play history by **accountID** and skipping `allLeaves`
+  when the owner isn't included (see [`plex.md`](plex.md) → "User filter in the sync").
 - **Resilient sync**: a show with an error (404, timeout, nonexistent episode) is logged and
   skipped; it doesn't abort the rest of the sync nor leave `last_sync` unupdated.
 - **Session without TVDB**: it's warned once and cached so it isn't re-resolved (or re-warned) on each

@@ -4,6 +4,55 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.6.1] - 2026-06-10
+
+### Fixed
+
+- **Watched episodes no longer re-download after a season-monitoring change**: Sonarr cascades a
+  season's `monitored` flag to its episodes, invalidating the episode snapshot `apply_window`
+  fetched before the change — the unmonitor batch then skipped watched episodes the cascade had
+  just re-monitored, and the sync's re-search re-downloaded them (e.g. a back-catalog anchor jump
+  in seasons mode). The window now resolves the anchor **before any write** (no half-applied season
+  flags when the anchor isn't in Sonarr) and re-fetches the episodes whenever the season flags
+  actually changed.
+- **Abandoned shows no longer oscillate between re-download and grace deletion**: past
+  `dormant_days`/`grace_unwatched_days` of inactivity, every full sync re-armed the GET window
+  (monitor + search) that the next grace sweep deleted again. The GET arm is now gated by the same
+  inactivity clock the graces use; resuming the show (any live watch) re-arms it naturally, and
+  `completed` intentionally does not gate so a caught-up show still re-arms when a new season airs.
+- **Single-server Plex link now triggers the "first full" sync**: the auto-select path (exactly one
+  server discovered) stored the server but skipped the full reconciliation the multi-server path
+  fired, leaving the connection-of-both-deps promise to the next periodic cycle.
+- **Grace sweep keeps its KEEP floor when Plex and Sonarr numbering disagree**: a recorded watch
+  Sonarr doesn't list silently dissolved the floor, letting `grace_watched`/`grace_unwatched` trim
+  the whole watched tail KEEP guarantees; the anchor now clamps to the furthest watched episode
+  Sonarr lists (same clamp as the window's anchor floor).
+- **Per-server sync state resets on unlink/server switch**: `history_watermark`/`last_full_sync`
+  survived relinking a different PMS, where a carried-over (possibly future) watermark made
+  incremental sweeps skip the new server's plays forever. The linked server's `clientIdentifier`
+  is now persisted and both keys reset when it changes.
+- **A failed history read no longer advances the watermark**: a full sync whose history endpoint
+  was down stamped `watermark=now` + `last_full_sync`, burying the outage's plays below the
+  incremental floor and disabling the promote-to-full degradation for a whole floor interval.
+  A blind sweep now advances nothing; cycles stay full until the endpoint recovers.
+- **Search hygiene**: unaired GET-window episodes are monitored but no longer searched (a
+  guaranteed-empty indexer query per trigger of a weekly show), and the sync's Wanted/Missing
+  re-search skips the ids a window already searched in the same cycle (each missing window episode
+  used to get two `EpisodeSearch` commands per sync).
+- **Input hardening**: non-numeric/negative grace fields in the policy form disable the grace
+  instead of returning 500 (or firing unconditionally); the watched threshold is clamped into
+  (0, 1]; zero/negative poller/sweep intervals fail fast at startup instead of hot-looping.
+
+### Added
+
+- **The user filter now also governs the sync**: history plays are filtered by `accountID`
+  (names resolved via the server's `/accounts`) before the per-episode dedup, and `allLeaves`
+  only contributes when the owner is included (its `viewCount` belongs to the server token's
+  account). Previously any server account's viewing could move a filtered show's anchor. The
+  incremental watermark advances past the newest *scanned* play (pre-filter) so it keeps moving
+  while only filtered users play; unresolvable filters degrade to the unfiltered sweep with a
+  warning.
+
 ## [1.6.0] - 2026-06-04
 
 ### Changed
