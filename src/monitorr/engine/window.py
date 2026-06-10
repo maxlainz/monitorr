@@ -90,18 +90,21 @@ async def apply_window(
     *,
     series: SonarrSeries | None = None,
     episodes: list[SonarrEpisode] | None = None,
-) -> None:
+) -> set[int]:
     """`series`/`episodes` let the sync pass already-fetched data to avoid the per-show
     `find_series_by_tvdb` + `get_episodes`; the poller/webhook leave them None → fetched here.
     Equivalent: `series` is only read for `.id`/`.seasons` (season monitoring re-GETs the series
-    itself), and `episodes` is the same start-of-cycle snapshot it would otherwise have fetched."""
+    itself), and `episodes` is the same start-of-cycle snapshot it would otherwise have fetched.
+
+    Returns the episode ids this window searched, so the sync's same-cycle re-search of
+    Wanted/Missing can skip them (the queue snapshot it filters on predates these grabs)."""
     policy, enabled = await effective_policy(tvdb_id)
     if not enabled:
-        return
+        return set()
     cfg = await sonarr.get_config()
     if cfg is None:
         logger.warning("Sonarr not configured; skipping the window")
-        return
+        return set()
     base_url, api_key = cfg
     dry_run = await get_dry_run()
 
@@ -109,7 +112,7 @@ async def apply_window(
         series = await sonarr.find_series_by_tvdb(base_url, api_key, tvdb_id)
     if series is None:
         logger.warning("show tvdb=%s is not in Sonarr", tvdb_id)
-        return
+        return set()
 
     if episodes is None:
         episodes = await sonarr.get_episodes(base_url, api_key, series.id)
@@ -153,7 +156,7 @@ async def apply_window(
     idx = _anchor_idx(real)
     if idx is None:
         logger.warning("S%02dE%02d not found in Sonarr (tvdb=%s)", season, episode, tvdb_id)
-        return
+        return set()
 
     armed = await _is_armed(tvdb_id, policy)
     if not armed:
@@ -173,7 +176,7 @@ async def apply_window(
         idx = _anchor_idx(real)
         if idx is None:  # the episode list changed under us mid-flight
             logger.warning("S%02dE%02d vanished from Sonarr (tvdb=%s)", season, episode, tvdb_id)
-            return
+            return set()
 
     # GET: monitor (and search) ahead.
     ahead = _select_ahead(real, idx, policy)
@@ -186,9 +189,11 @@ async def apply_window(
         for e in real
         if matches_always_have(policy.always_have, e.season_number, e.episode_number)
     }
-    # search_ahead = the GET window without a file = what gets searched (and can drag in a season
-    # pack of already-watched episodes). The most important line when chasing the re-import bug.
-    search_ahead = [e for e in ahead if not e.has_file]
+    # search_ahead = the GET window without a file AND already aired = what gets searched (and can
+    # drag in a season pack of already-watched episodes). The most important line when chasing the
+    # re-import bug. Unaired episodes are only monitored — searching them is a guaranteed-empty
+    # indexer query on every trigger of a weekly show; Sonarr grabs them on air via RSS.
+    search_ahead = [e for e in ahead if not e.has_file and e.has_aired()]
     logger.debug(
         "apply_window tvdb=%s anchor=S%02dE%02d idx=%d get=%d%s keep=%d%s dry_run=%s "
         "ahead=%s search_ahead=%s",
@@ -209,8 +214,10 @@ async def apply_window(
     monitor_ids = (ahead_ids if armed else set()) | always_have_ids
     if monitor_ids:
         await actions.monitor_episodes(base_url, api_key, sorted(monitor_ids), dry_run)
+    searched_ids: set[int] = set()
     if armed and policy.search_on_get and search_ahead:
-        await actions.search_episodes(base_url, api_key, [e.id for e in search_ahead], dry_run)
+        searched_ids = {e.id for e in search_ahead}
+        await actions.search_episodes(base_url, api_key, sorted(searched_ids), dry_run)
 
     deleted_ids: set[int] = set()
 
@@ -273,3 +280,4 @@ async def apply_window(
         [(e.season_number, e.episode_number) for e in real if e.id in surplus],
     )
     await actions.cancel_downloads(base_url, api_key, surplus, dry_run)
+    return searched_ids

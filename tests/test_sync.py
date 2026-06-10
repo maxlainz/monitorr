@@ -44,6 +44,11 @@ EPISODES = [
     },
 ]
 
+# Fixtures air in the past: the window only searches aired episodes (unaired are just monitored).
+AIRED_AT = "2020-01-01T00:00:00Z"
+for _episode in EPISODES:
+    _episode["airDateUtc"] = AIRED_AT
+
 ALL_LEAVES = [
     {"parentIndex": 1, "index": 1, "viewCount": 1, "lastViewedAt": 1700000000},
     {"parentIndex": 1, "index": 2, "viewCount": 1, "lastViewedAt": 1700001000},
@@ -175,6 +180,81 @@ async def test_sync_applies_user_filter_via_account_ids() -> None:
     watermark = await store.get_setting(constants.HISTORY_WATERMARK)
     assert watermark is not None
     assert watermark >= (datetime.now(UTC) - timedelta(days=1, hours=1)).isoformat()
+
+
+@respx.mock
+async def test_resync_pass_skips_episodes_the_window_just_searched() -> None:
+    """The Wanted/Missing re-search runs after the windows and filters on a queue snapshot that
+    predates their grabs: without excluding the ids a window searched this same cycle, every
+    missing GET-window episode got two EpisodeSearch commands per sync."""
+    await _configure_links()
+    await set_dry_run(False)
+    episodes = [dict(e) for e in EPISODES]
+    episodes[2] = {**episodes[2], "hasFile": False, "episodeFileId": 0, "monitored": True}
+    respx.get(f"{PLEX}/library/sections").mock(
+        return_value=httpx.Response(
+            200, json={"MediaContainer": {"Directory": [{"key": "1", "type": "show"}]}}
+        )
+    )
+    respx.get(f"{PLEX}/library/sections/1/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {"ratingKey": "100", "title": "X", "Guid": [{"id": f"tvdb://{TVDB}"}]}
+                    ]
+                }
+            },
+        )
+    )
+    respx.get(f"{PLEX}/library/metadata/100/allLeaves").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {
+                            "parentIndex": 1,
+                            "index": 1,
+                            "viewCount": 1,
+                            "lastViewedAt": _epoch_days_ago(2),
+                        },
+                        {
+                            "parentIndex": 1,
+                            "index": 2,
+                            "viewCount": 1,
+                            "lastViewedAt": _epoch_days_ago(1),
+                        },
+                    ]
+                }
+            },
+        )
+    )
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(200, json={"MediaContainer": {"Metadata": []}})
+    )
+    respx.get("http://sonarr:8989/api/v3/series").mock(
+        return_value=httpx.Response(200, json=[{"id": 1, "title": "X", "tvdbId": TVDB}])
+    )
+    respx.get("http://sonarr:8989/api/v3/episode").mock(
+        return_value=httpx.Response(200, json=episodes)
+    )
+    respx.put(f"{SONARR}/episode/monitor").mock(return_value=httpx.Response(200, json=[]))
+    respx.delete(url__regex=r"http://sonarr:8989/api/v3/episodefile/\d+").mock(
+        return_value=httpx.Response(200)
+    )
+    respx.get(f"{SONARR}/queue").mock(return_value=httpx.Response(200, json={"records": []}))
+    command = respx.post(f"{SONARR}/command").mock(return_value=httpx.Response(201, json={}))
+
+    summary = await sync.run_sync()
+
+    # Anchor E2 → the window searches the missing E3 (103) once; the re-search pass skips it.
+    searched = [
+        eid for c in command.calls for eid in json.loads(c.request.content).get("episodeIds", [])
+    ]
+    assert searched == [103]
+    assert summary["searched"] == 0
 
 
 @respx.mock
@@ -362,10 +442,18 @@ async def test_sync_anchors_on_history_when_files_deleted() -> None:
             "hasFile": n in (1, 2, 5),
             "episodeFileId": (200 + n) if n in (1, 2, 5) else 0,
             "monitored": False,
+            "airDateUtc": AIRED_AT,
         }
         for n in range(1, 9)
     ] + [
-        {"id": 300 + n, "seasonNumber": 3, "episodeNumber": n, "hasFile": False, "monitored": False}
+        {
+            "id": 300 + n,
+            "seasonNumber": 3,
+            "episodeNumber": n,
+            "hasFile": False,
+            "monitored": False,
+            "airDateUtc": AIRED_AT,
+        }
         for n in range(1, 4)
     ]
     respx.get("http://sonarr:8989/api/v3/series").mock(
@@ -776,10 +864,18 @@ async def test_incremental_sync_does_not_regress_below_recorded_max() -> None:
             "hasFile": n in (1, 2, 3),
             "episodeFileId": (200 + n) if n in (1, 2, 3) else 0,
             "monitored": False,
+            "airDateUtc": AIRED_AT,
         }
         for n in range(1, 9)
     ] + [
-        {"id": 300 + n, "seasonNumber": 3, "episodeNumber": n, "hasFile": False, "monitored": False}
+        {
+            "id": 300 + n,
+            "seasonNumber": 3,
+            "episodeNumber": n,
+            "hasFile": False,
+            "monitored": False,
+            "airDateUtc": AIRED_AT,
+        }
         for n in range(1, 4)
     ]
     respx.get("http://sonarr:8989/api/v3/series").mock(

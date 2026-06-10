@@ -5,9 +5,11 @@ import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from monitorr import constants, store, sync
-from monitorr.engine.policy import effective_policy, get_global_policy
+from monitorr.config import Settings
+from monitorr.engine.policy import effective_policy, get_global_policy, get_watched_threshold
 from monitorr.main import app
 from monitorr.plex.webhook import get_or_create_webhook_secret, parse_scrobble
 from monitorr.web import routes
@@ -264,6 +266,38 @@ async def test_saving_sonarr_without_plex_does_not_trigger_sync(
     await asyncio.sleep(0.05)
     assert resp.status_code == 303
     assert calls == []  # only one dependency → no full sync
+
+
+async def test_policy_form_tolerates_bad_numbers_and_clamps_threshold() -> None:
+    """Non-numeric grace fields must not 500 (they disable the grace), and an out-of-range
+    watched threshold is clamped — >1 would make the live trigger permanently dead."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/settings/policy",
+            data={
+                "grace_watched_days": "abc",
+                "dormant_days": "-5",
+                "watched_threshold": "5",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    policy = await get_global_policy()
+    assert policy.grace_watched_days is None  # bad input → grace disabled, not a 500
+    assert policy.dormant_days is None  # negative would fire unconditionally → disabled
+    assert await get_watched_threshold() == 1.0  # clamped into (0, 1]
+
+
+def test_settings_reject_hot_loop_intervals() -> None:
+    """A zero/negative loop interval would degenerate into a hot loop hammering Plex/Sonarr;
+    the settings fail fast instead. 0 stays valid where it means 'disabled'."""
+    with pytest.raises(ValidationError):
+        Settings(plex_poll_interval=0)
+    with pytest.raises(ValidationError):
+        Settings(grace_sweep_interval=-1)
+    assert Settings(sync_interval=0).sync_interval == 0  # documented "disabled"
+    assert Settings(full_sync_interval=0).full_sync_interval == 0
 
 
 async def test_unlink_clears_per_server_sync_state() -> None:

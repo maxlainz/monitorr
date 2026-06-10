@@ -55,6 +55,11 @@ EPISODES = [
     },
 ]
 
+# Fixtures air in the past: the window only searches aired episodes (unaired are just monitored).
+AIRED_AT = "2020-01-01T00:00:00Z"
+for _episode in EPISODES:
+    _episode["airDateUtc"] = AIRED_AT
+
 
 async def _configure(always_have: list[str]) -> None:
     await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
@@ -159,6 +164,7 @@ def _ep(num: int, *, has_file: bool, monitored: bool = True) -> dict[str, object
         "hasFile": has_file,
         "episodeFileId": (200 + num) if has_file else 0,
         "monitored": monitored,
+        "airDateUtc": AIRED_AT,
     }
 
 
@@ -393,6 +399,31 @@ async def test_window_skips_series_put_when_seasons_already_correct() -> None:
 
 def _days_ago(days: int) -> str:
     return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
+@respx.mock
+async def test_unaired_ahead_episodes_are_monitored_but_not_searched() -> None:
+    """The GET window monitors unaired episodes (Sonarr grabs them on air via RSS) but must not
+    search them: that's a guaranteed-empty indexer query on every trigger of a weekly show."""
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await set_global_policy(Policy(get_count=2, keep_count=1, always_have=[]))
+    await set_dry_run(False)
+    episodes = [dict(e) for e in EPISODES]  # E4/E5 have no file
+    episodes[4]["airDateUtc"] = "2999-01-01T00:00:00Z"  # E5 not aired yet
+    routes = _mock_sonarr(episodes)
+
+    await apply_window(TVDB, season=1, episode=3)  # ahead = E4 (aired) + E5 (unaired)
+
+    payloads = [json.loads(c.request.content) for c in routes["monitor"].calls]
+    monitored = {eid for p in payloads if p["monitored"] is True for eid in p["episodeIds"]}
+    assert {104, 105} <= monitored  # both stay monitored
+    searched = [
+        eid
+        for c in routes["command"].calls
+        for eid in json.loads(c.request.content).get("episodeIds", [])
+    ]
+    assert searched == [104]  # the unaired E5 is not searched
 
 
 @respx.mock

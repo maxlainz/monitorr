@@ -242,8 +242,17 @@ def _policy_from_form(
     """Build a Policy from the shared form fields (global and per-series forms)."""
 
     def _opt_int(value: str) -> int | None:
+        """Empty, non-numeric or negative → None (grace disabled), never a 500. A negative number
+        would make the grace fire unconditionally — deletions from a typo — so disabling is the
+        safe reading; 0 stays valid ("immediately")."""
         value = value.strip()
-        return int(value) if value else None
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed >= 0 else None
 
     return Policy(
         get_count=max(0, get_count),
@@ -292,7 +301,11 @@ async def save_policy(
     )
     await set_global_policy(policy)
     await set_dry_run(dry_run is not None)
-    await store.set_setting(constants.WATCHED_THRESHOLD, str(watched_threshold))
+    # Out-of-range thresholds make the live trigger dead (>1: progress can never reach it) or
+    # hair-triggered; clamp to a sane band.
+    await store.set_setting(
+        constants.WATCHED_THRESHOLD, str(min(1.0, max(0.05, watched_threshold)))
+    )
     await store.set_setting(constants.USER_FILTER, json.dumps(_split(user_filter)))
     return RedirectResponse(url="/settings", status_code=303)
 

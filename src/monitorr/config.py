@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,13 +18,16 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"
-    plex_poll_interval: int = 30
-    grace_sweep_interval: int = 3600
-    sync_interval: int = 21600
+    # The loops sleep these intervals between iterations: a zero/negative value would degenerate
+    # into a hot loop hammering Plex/Sonarr, so fail fast at startup instead (ge validators).
+    # sync_interval/full_sync_interval accept 0 as their documented "disabled" value.
+    plex_poll_interval: int = Field(default=30, ge=1)
+    grace_sweep_interval: int = Field(default=3600, ge=1)
+    sync_interval: int = Field(default=21600, ge=0)
     # Rolling floor (seconds since the last FULL sync) that forces a full reconciliation as a safety
     # net; the periodic timer is otherwise incremental. 30 days by default; 0 disables the floor
     # (full only on connection of both deps, manual "Sync now", or when the history sweep is blind).
-    full_sync_interval: int = 2592000
+    full_sync_interval: int = Field(default=2592000, ge=0)
     sync_on_startup: bool = True
     webhook_secret: str = ""
 

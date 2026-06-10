@@ -115,11 +115,13 @@ async def _run(force_full: bool) -> dict[str, int]:
             sweep = plex.HistorySweep({}, None)
         history, newest_seen = sweep
 
-        shows, matched = await _apply_watches(
+        shows, matched, searched_by_windows = await _apply_watches(
             uri, token, client_id, history, by_tvdb, full, include_library
         )
 
-        normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
+        normalized, searched = await _reconcile_managed(
+            base_url, api_key, managed_series, dry_run, searched_by_windows
+        )
 
         # A blind sweep must advance nothing: stamping the watermark at "now" would bury the plays
         # missed during the outage below the incremental floor, and stamping last_full would stop
@@ -173,12 +175,14 @@ async def _apply_watches(
     by_tvdb: dict[int, sonarr.SonarrSeries],
     full: bool,
     include_library: bool,
-) -> tuple[int, int]:
+) -> tuple[int, int, set[int]]:
     """Records the watched state and applies the window per show. Returns (shows_considered,
-    matched). On an incremental cycle with no new plays there is nothing to do — skip listing the
+    matched, episode ids the windows searched — so the re-search pass can skip them this cycle).
+    On an incremental cycle with no new plays there is nothing to do — skip listing the
     libraries entirely (the allLeaves-per-show scan is the cost we're avoiding)."""
+    searched_ids: set[int] = set()
     if not full and not history:
-        return 0, 0
+        return 0, 0, searched_ids
     refs: list[plex.ShowRef] = []
     for section in await plex.list_show_libraries(uri, token, client_id):
         refs.extend(await plex.list_shows(uri, token, client_id, section))
@@ -222,11 +226,13 @@ async def _apply_watches(
                 anchor.episode,
             )
             # Pass the already-fetched series so the window skips its own find_series_by_tvdb.
-            await apply_window(series.tvdb_id, anchor.season, anchor.episode, series=series)
+            searched_ids |= await apply_window(
+                series.tvdb_id, anchor.season, anchor.episode, series=series
+            )
             matched += 1
         except Exception:
             logger.exception("error syncing tvdb=%s", show.tvdb_id)
-    return shows, matched
+    return shows, matched, searched_ids
 
 
 def _since(watermark: str) -> str:
@@ -276,7 +282,11 @@ def _merge_watches(*sources: list[plex.WatchedEpisode]) -> list[plex.WatchedEpis
 
 
 async def _reconcile_managed(
-    base_url: str, api_key: str, managed_series: list[sonarr.SonarrSeries], dry_run: bool
+    base_url: str,
+    api_key: str,
+    managed_series: list[sonarr.SonarrSeries],
+    dry_run: bool,
+    already_searched: set[int],
 ) -> tuple[int, int]:
     """One pass over the managed shows with a **single `get_episodes` each** (was two passes:
     normalize + re-search) and one shared `queue`. Returns (normalized, searched).
@@ -287,7 +297,10 @@ async def _reconcile_managed(
       just-normalized show would only (redundantly) hit that pilot — hence we skip it.
     - **Re-search** (the rest: watched shows, or normalize disabled): Sonarr's Wanted/Missing —
       episodes still monitored, already aired and without a file — searched again, excluding the
-      ones already downloading. Recovers from a transient indexer outage at monitor-time.
+      ones already downloading **and the ones a window searched this same cycle**
+      (`already_searched`: the queue snapshot below predates those grabs, so without the exclusion
+      every missing GET-window episode got two EpisodeSearch commands per sync).
+      Recovers from a transient indexer outage at monitor-time.
 
     Respects per-series override (enabled / auto_normalize / search_on_get) and dry-run."""
     queued = {item.episode_id for item in await sonarr.get_queue(base_url, api_key)}
@@ -310,7 +323,11 @@ async def _reconcile_managed(
                 missing = [
                     e.id
                     for e in episodes
-                    if e.monitored and not e.has_file and e.has_aired() and e.id not in queued
+                    if e.monitored
+                    and not e.has_file
+                    and e.has_aired()
+                    and e.id not in queued
+                    and e.id not in already_searched
                 ]
                 if missing:
                     await actions.search_episodes(base_url, api_key, missing, dry_run)
