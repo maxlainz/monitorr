@@ -334,6 +334,8 @@ async def plex_link_poll(request: Request) -> HTMLResponse:
         )
     if len(servers) == 1 and await _store_server(servers[0]):
         await _try_register_webhook(request)
+        # Same "connection of both deps" trigger as the multi-server path (plex_choose_server).
+        await _maybe_trigger_full_sync()
         return templates.TemplateResponse(
             request, "_plex_link.html", {"state": "linked", "server_name": servers[0].name}
         )

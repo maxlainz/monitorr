@@ -209,6 +209,47 @@ async def test_connecting_both_deps_triggers_full_sync(monkeypatch: pytest.Monke
     assert calls == [True]
 
 
+@respx.mock
+async def test_single_server_link_triggers_full_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The auto-selected single-server link path must fire the same "connection of both deps"
+    full sync as the multi-server choose path (it previously skipped it)."""
+    calls = _capture_run_sync(monkeypatch)
+    await store.set_setting(constants.SONARR_URL, "http://sonarr:8989")
+    await store.set_setting(constants.SONARR_API_KEY, "key")
+    await store.set_setting(constants.PLEX_CLIENT_ID, "cid")
+    await store.set_setting("plex_pin_id", "123")
+    await store.set_setting("plex_pin_code", "ABCD")
+    respx.get("https://plex.tv/api/v2/pins/123").mock(
+        return_value=httpx.Response(200, json={"authToken": "tok"})
+    )
+    respx.get("https://plex.tv/api/v2/resources").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "provides": "server",
+                    "name": "Home",
+                    "clientIdentifier": "srv-1",
+                    "accessToken": "srv-tok",
+                    "connections": [{"uri": "http://plex:32400", "local": True, "relay": False}],
+                }
+            ],
+        )
+    )
+    respx.get("https://plex.tv/api/v2/user/webhooks").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.post("https://plex.tv/api/v2/user/webhooks").mock(return_value=httpx.Response(201))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/plex/link/poll")
+    await asyncio.sleep(0.05)
+    assert resp.status_code == 200
+    assert "linked" in resp.text or "Home" in resp.text
+    assert calls == [True]
+
+
 async def test_saving_sonarr_without_plex_does_not_trigger_sync(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
