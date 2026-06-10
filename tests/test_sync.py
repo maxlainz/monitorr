@@ -109,6 +109,75 @@ def _mock_sonarr() -> dict[str, respx.Route]:
 
 
 @respx.mock
+async def test_sync_applies_user_filter_via_account_ids() -> None:
+    """With a user filter, the sync must honor it like the poller/webhook do: history plays are
+    filtered by accountID (resolved via /accounts) and allLeaves is skipped when the owner isn't
+    in the filter (its viewCount belongs to the server token's account). Here the owner watched
+    much further (S1E5) than the filtered user bob (S1E2): only bob's plays may move the anchor."""
+    await _configure_links()
+    await set_dry_run(False)
+    await store.set_setting(constants.USER_FILTER, json.dumps(["bob"]))
+    leaves = _mock_plex(TVDB)  # allLeaves reports the owner's watches (S1E1, S1E2)
+    routes = _mock_sonarr()
+    respx.get(f"{PLEX}/accounts").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Account": [{"id": 1, "name": "Alice"}, {"id": 7, "name": "Bob"}]
+                }
+            },
+        )
+    )
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {
+                            "type": "episode",
+                            "grandparentTitle": "X",
+                            "parentIndex": 1,
+                            "index": 5,
+                            "viewedAt": _epoch_days_ago(1),
+                            "accountID": 1,  # the owner — filtered out
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentTitle": "X",
+                            "parentIndex": 1,
+                            "index": 2,
+                            "viewedAt": _epoch_days_ago(2),
+                            "accountID": 7,  # bob — the filtered user
+                        },
+                    ]
+                }
+            },
+        )
+    )
+
+    summary = await sync.run_sync()
+
+    assert summary["matched"] == 1
+    assert not leaves.called  # owner not in the filter → allLeaves contributes nothing
+    # Only bob's play is recorded; the owner's S1E5 must not drag the anchor forward.
+    assert {(w.season, w.episode) for w in await store.get_watches(TVDB)} == {(1, 2)}
+    # Anchor S1E2 → GET=1 monitors E3 (id 103), never E6+ past the owner's watch point.
+    monitored = {
+        eid
+        for c in routes["monitor"].calls
+        if json.loads(c.request.content)["monitored"] is True
+        for eid in json.loads(c.request.content)["episodeIds"]
+    }
+    assert monitored == {103}
+    # The watermark still advances past the owner's newer (filtered) play.
+    watermark = await store.get_setting(constants.HISTORY_WATERMARK)
+    assert watermark is not None
+    assert watermark >= (datetime.now(UTC) - timedelta(days=1, hours=1)).isoformat()
+
+
+@respx.mock
 async def test_sync_seeds_watches_and_applies_window() -> None:
     await _configure_links()
     await set_dry_run(False)

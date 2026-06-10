@@ -14,7 +14,7 @@ from typing import Any
 from monitorr import constants, store
 from monitorr.config import get_settings
 from monitorr.engine import actions
-from monitorr.engine.policy import effective_policy, get_dry_run
+from monitorr.engine.policy import effective_policy, get_dry_run, get_user_filter
 from monitorr.engine.window import apply_window
 from monitorr.plex import client as plex
 from monitorr.sonarr import client as sonarr
@@ -98,20 +98,29 @@ async def _run(force_full: bool) -> dict[str, int]:
             or _floor_elapsed(await store.get_setting(constants.LAST_FULL_SYNC))
         )
 
+        # Sync-side user filter: history rows are filtered by accountID (resolved from the
+        # filter's names); allLeaves only contributes when the owner is included, since its
+        # viewCount reflects the server token's account (the owner).
+        account_ids = await _account_filter(uri, token, client_id)
+        include_library = account_ids is None or plex.OWNER_ACCOUNT_ID in account_ids
+
         since = None if full or watermark is None else _since(watermark)
-        history = await _watch_history(uri, token, client_id, since)
-        if history is None:  # endpoint failed
+        sweep = await _watch_history(uri, token, client_id, since, account_ids)
+        if sweep is None:  # endpoint failed
             if not full:
                 # Can't trust an empty delta when the source is down → reconcile fully this cycle.
                 logger.info("Plex history unavailable; promoting incremental sync to full")
                 full = True
-            history = {}
+            sweep = plex.HistorySweep({}, None)
+        history, newest_seen = sweep
 
-        shows, matched = await _apply_watches(uri, token, client_id, history, by_tvdb, full)
+        shows, matched = await _apply_watches(
+            uri, token, client_id, history, by_tvdb, full, include_library
+        )
 
         normalized, searched = await _reconcile_managed(base_url, api_key, managed_series, dry_run)
 
-        await _persist_watermark(full, watermark, _history_max(history))
+        await _persist_watermark(full, watermark, newest_seen)
 
     summary = {
         "shows": shows,
@@ -127,6 +136,29 @@ async def _run(force_full: bool) -> dict[str, int]:
     return summary
 
 
+async def _account_filter(uri: str, token: str, client_id: str) -> set[int] | None:
+    """Local accountIDs matching the user filter, or None when no filtering applies: filter empty,
+    or its names can't be resolved against the server's `/accounts` — then degrade to the historic
+    unfiltered behavior (with a warning) rather than silently dropping every play."""
+    names = await get_user_filter()
+    if not names:
+        return None
+    try:
+        accounts = await plex.get_accounts(uri, token, client_id)
+    except Exception:
+        logger.warning("could not list Plex accounts; user filter not applied to sync")
+        return None
+    wanted = {plex.normalize_title(name) for name in names}
+    ids = {account_id for name, account_id in accounts.items() if name in wanted}
+    unmatched = wanted - set(accounts)
+    if unmatched:
+        logger.warning("user filter names not found among Plex accounts: %s", sorted(unmatched))
+    if not ids:
+        logger.warning("no user filter name matched a Plex account; sync stays unfiltered")
+        return None
+    return ids
+
+
 async def _apply_watches(
     uri: str,
     token: str,
@@ -134,6 +166,7 @@ async def _apply_watches(
     history: dict[str, list[plex.WatchedEpisode]],
     by_tvdb: dict[int, sonarr.SonarrSeries],
     full: bool,
+    include_library: bool,
 ) -> tuple[int, int]:
     """Records the watched state and applies the window per show. Returns (shows_considered,
     matched). On an incremental cycle with no new plays there is nothing to do — skip listing the
@@ -154,7 +187,11 @@ async def _apply_watches(
             continue
         # A show with an error (404, timeout, nonexistent episode) must not abort the sync.
         try:
-            library = await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
+            library = (
+                await plex.get_watched_episodes(uri, token, client_id, show.rating_key)
+                if include_library
+                else []
+            )
             episodes = history.get(plex.normalize_title(show.title), [])
             watched = _merge_watches(library, episodes)
             if not watched:
@@ -190,17 +227,9 @@ def _since(watermark: str) -> str:
     return (datetime.fromisoformat(watermark) - _WATERMARK_OVERLAP).isoformat()
 
 
-def _history_max(history: dict[str, list[plex.WatchedEpisode]]) -> str | None:
-    """Newest viewed_at across the whole sweep (any show), to advance the watermark past everything
-    seen — even plays of unmanaged shows, so the next incremental never re-fetches them."""
-    newest: str | None = None
-    for episodes in history.values():
-        for episode in episodes:
-            newest = episode.viewed_at if newest is None else max(newest, episode.viewed_at)
-    return newest
-
-
 async def _persist_watermark(full: bool, prev: str | None, new_max: str | None) -> None:
+    """`new_max` is the sweep's newest *scanned* viewedAt (pre-filter, any show — see
+    HistorySweep), so the next incremental never re-fetches plays already seen."""
     if full:
         # After a full reconciliation everything up to now is captured: the incremental floor is the
         # newest play seen, or now if the history is empty. Stamp the full timestamp too.
@@ -213,14 +242,15 @@ async def _persist_watermark(full: bool, prev: str | None, new_max: str | None) 
 
 
 async def _watch_history(
-    uri: str, token: str, client_id: str, since: str | None
-) -> dict[str, list[plex.WatchedEpisode]] | None:
-    """Global Plex play history grouped by normalized show title (incremental when `since` is set).
-    Returns None when the history endpoint fails (old PMS, history disabled): the caller degrades a
-    full sweep to library-only detection, or promotes an incremental sweep to full (an empty delta
-    from a dead endpoint must not be mistaken for "nothing new")."""
+    uri: str, token: str, client_id: str, since: str | None, account_ids: set[int] | None
+) -> plex.HistorySweep | None:
+    """Global Plex play history grouped by normalized show title (incremental when `since` is set,
+    filtered by accountID when the user filter resolves). Returns None when the history endpoint
+    fails (old PMS, history disabled): the caller degrades a full sweep to library-only detection,
+    or promotes an incremental sweep to full (an empty delta from a dead endpoint must not be
+    mistaken for "nothing new")."""
     try:
-        return await plex.get_watch_history_by_show(uri, token, client_id, since)
+        return await plex.get_watch_history_by_show(uri, token, client_id, since, account_ids)
     except Exception:
         logger.warning("could not read Plex play history; back-catalog degraded", exc_info=True)
         return None

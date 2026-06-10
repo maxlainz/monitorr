@@ -142,6 +142,23 @@ waiting for a playback, by traversing the library:
 monitorr **unions both** sources: the anchor is the maximum `(season, episode)` watched across
 them, and the most recent date seeds the real date for the grace periods.
 
+### User filter in the sync (accountID)
+
+The history rows carry a local **`accountID`** (not the user name), and `allLeaves`'s `viewCount`
+reflects the account of the **server token** (the owner, `accountID == 1`). When the optional
+`user_filter` is set, the sync honors it like the poller/webhook do:
+
+- `GET {serverUri}/accounts` → `MediaContainer.Account[]` with `id`/`name`; the filter's names are
+  resolved to ids (normalized comparison; `get_accounts` in `client.py`).
+- The history sweep drops rows whose `accountID` isn't in the resolved set, **before** the
+  per-episode dedup (a newer play by a filtered-out user must not shadow the allowed user's older
+  one). The watermark still advances past the newest **scanned** row (pre-filter), or the
+  incremental window would grow without bound while only filtered users play.
+- `allLeaves` only contributes when the **owner** is in the filter, since its watch state is the
+  owner's.
+- Degradation: an empty filter, an `/accounts` failure or zero resolved names fall back to the
+  historic unfiltered sweep (with a warning) rather than silently dropping every play.
+
 This is the **retroactive** path: monitorr trusts Plex's reported watch state, not disk/Sonarr.
 `allLeaves` reflects the **current library**, so episodes whose files were deleted may **disappear
 from it** (depends on the Plex library settings) — their viewing would be invisible and the anchor

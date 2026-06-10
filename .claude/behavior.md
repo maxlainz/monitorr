@@ -252,7 +252,9 @@ dry-run.
 - **Aired vs absolute order (anime)**: the MVP always uses aired order `(season, episode)`.
   Known limitation: anime with absolute numbering may not order as expected.
 - **Multi-user**: out of v1 (a single consumer is assumed). There is an **optional user filter**
-  in Settings to limit which playbacks trigger actions.
+  in Settings to limit which playbacks trigger actions; the poller/webhook match by user title and
+  the **sync** applies it too, filtering the play history by **accountID** and skipping `allLeaves`
+  when the owner isn't included (see [`plex.md`](plex.md) → "User filter in the sync").
 - **Resilient sync**: a show with an error (404, timeout, nonexistent episode) is logged and
   skipped; it doesn't abort the rest of the sync nor leave `last_sync` unupdated.
 - **Session without TVDB**: it's warned once and cached so it isn't re-resolved (or re-warned) on each

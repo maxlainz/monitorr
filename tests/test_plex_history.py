@@ -44,11 +44,12 @@ async def test_get_watch_history_groups_by_title() -> None:
         )
     )
 
-    by_show = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
+    by_show, newest_seen = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
 
     assert "metadataItemID" not in route.calls.last.request.url.params  # not scoped per show
     assert {(w.season, w.episode) for w in by_show["euphoria"]} == {(3, 2), (1, 5)}
     assert {(w.season, w.episode) for w in by_show["game of thrones"]} == {(1, 4)}
+    assert newest_seen is not None and newest_seen.startswith("2024-03")  # newest episode row
 
 
 @respx.mock
@@ -83,7 +84,7 @@ async def test_get_watch_history_recovers_readded_show_by_title() -> None:
         )
     )
 
-    by_show = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
+    by_show, _ = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
 
     watched = by_show[plex.normalize_title("Euphoria")]
     assert max((w.season, w.episode) for w in watched) == (3, 3)
@@ -118,9 +119,82 @@ async def test_get_watch_history_keeps_most_recent_view() -> None:
         )
     )
 
-    by_show = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
+    by_show, _ = await plex.get_watch_history_by_show(PLEX, "tok", "cid")
 
     watched = by_show["show"]
     assert len(watched) == 1
     assert (watched[0].season, watched[0].episode) == (2, 4)
     assert watched[0].viewed_at.startswith("2030")  # keeps the most recent play
+
+
+@respx.mock
+async def test_history_filters_by_account_before_dedup() -> None:
+    """With account_ids, only those users' plays count — filtered BEFORE the per-episode dedup, so
+    a newer play by a filtered-out user can't shadow the allowed user's older one. newest_seen is
+    still the newest scanned row (pre-filter), so the incremental watermark always advances."""
+    respx.get(f"{PLEX}/status/sessions/history/all").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Metadata": [
+                        {
+                            "type": "episode",
+                            "grandparentTitle": "Show",
+                            "parentIndex": 5,
+                            "index": 1,
+                            "viewedAt": 1893456000,  # 2030: filtered-out user, furthest play
+                            "accountID": 1,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentTitle": "Show",
+                            "parentIndex": 2,
+                            "index": 4,
+                            "viewedAt": 1893455000,  # same episode as below, newer, filtered out
+                            "accountID": 1,
+                        },
+                        {
+                            "type": "episode",
+                            "grandparentTitle": "Show",
+                            "parentIndex": 2,
+                            "index": 4,
+                            "viewedAt": 1577836800,  # 2020: the allowed user's play
+                            "accountID": 7,
+                        },
+                    ]
+                }
+            },
+        )
+    )
+
+    by_show, newest_seen = await plex.get_watch_history_by_show(
+        PLEX, "tok", "cid", account_ids={7}
+    )
+
+    watched = by_show["show"]
+    assert {(w.season, w.episode) for w in watched} == {(2, 4)}  # S05E01 (account 1) excluded
+    assert watched[0].viewed_at.startswith("2020")  # account 1's newer play didn't shadow it
+    assert newest_seen is not None and newest_seen.startswith("2030")  # pre-filter watermark
+
+
+@respx.mock
+async def test_get_accounts_maps_normalized_names_to_ids() -> None:
+    respx.get(f"{PLEX}/accounts").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "MediaContainer": {
+                    "Account": [
+                        {"id": 1, "name": "Alice"},
+                        {"id": 7, "name": "Bob"},
+                        {"id": 9, "name": ""},  # unnamed (managed/hidden) → skipped
+                    ]
+                }
+            },
+        )
+    )
+
+    accounts = await plex.get_accounts(PLEX, "tok", "cid")
+
+    assert accounts == {"alice": 1, "bob": 7}
