@@ -81,16 +81,18 @@ async def _sweep_series(
     # guarantees on disk, relative to the latest watched episode (the viewing point). KEEP is the
     # spatial retention guarantee; grace only trims what already falls outside it. (The bulk purges
     # completed/dormant above intentionally ignore KEEP — the show is finished/abandoned.)
+    # The anchor is clamped to a key Sonarr actually lists — same clamp as apply_window's floor:
+    # a recorded watch Sonarr doesn't know (Plex numbering mismatch, removed episode) must pick
+    # the furthest *real* watched episode, not silently dissolve the whole KEEP floor.
     real = sorted(all_eps, key=lambda e: (e.season_number, e.episode_number))
+    real_keys = {(e.season_number, e.episode_number) for e in real}
     kept_keys: set[tuple[int, int]] = set()
-    if watches:
-        anchor = max(watches)  # latest watched in airing order = current viewing point
+    anchor = max((key for key in watches if key in real_keys), default=None)
+    if anchor is not None:
         anchor_idx = next(
-            (i for i, e in enumerate(real) if (e.season_number, e.episode_number) == anchor),
-            None,
+            i for i, e in enumerate(real) if (e.season_number, e.episode_number) == anchor
         )
-        if anchor_idx is not None:
-            kept_keys = keep_protected_keys(real, anchor_idx, policy)
+        kept_keys = keep_protected_keys(real, anchor_idx, policy)
 
     # watched: watched more than X days ago, keeping the most recent one as a marker.
     if policy.grace_watched_days is not None:
