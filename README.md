@@ -93,7 +93,7 @@ docker run -d \
 ```
 
 Images available on **Docker Hub** (`maxlainz/monitorr`) and **GHCR**
-(`ghcr.io/maxlainz/monitorr`), with tags `:1`, `:1.0`, `:1.0.0` and `:latest` for amd64 and arm64.
+(`ghcr.io/maxlainz/monitorr`), with tags `:X.Y.Z`, `:X.Y`, `:X` and `:latest` for amd64 and arm64.
 
 ### First steps
 
@@ -116,14 +116,16 @@ SQLite and is edited **from the Web UI**. Environment variables only cover infra
 | Variable | Purpose | Default |
 |---|---|---|
 | `MONITORR_CONFIG_DIR` | Data directory (SQLite, Plex client identity) | `/config` |
+| `MONITORR_HOST` | Bind address for the Web UI / API | `0.0.0.0` |
 | `MONITORR_PORT` | Listening port | `8080` |
 | `MONITORR_LOG_LEVEL` | Log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`) | `INFO` |
 | `MONITORR_PLEX_POLL_INTERVAL` | Seconds between Plex session polls | `30` |
 | `MONITORR_GRACE_SWEEP_INTERVAL` | Seconds between grace-period sweeps | `3600` |
-| `MONITORR_SYNC_INTERVAL` | Seconds between syncs (`0` disables it) | `21600` |
-| `MONITORR_SYNC_ON_STARTUP` | Sync once on startup if it never ran | `true` |
+| `MONITORR_SYNC_INTERVAL` | Seconds between incremental syncs (`0` disables it) | `21600` |
+| `MONITORR_FULL_SYNC_INTERVAL` | Seconds since the last full sync that force the next one to be full (`0` disables the floor) | `2592000` |
+| `MONITORR_SYNC_ON_STARTUP` | On startup, sync if a full one is overdue (never ran or floor elapsed) | `true` |
 | `MONITORR_WEBHOOK_SECRET` | Override for the Plex webhook secret (auto-generated if empty) | (empty) |
-| `TZ` | Time zone (affects grace periods) | `UTC` |
+| `TZ` | Time zone (log/display timestamps; grace math is UTC elapsed-time) | `UTC` |
 
 Template in [`.env.example`](.env.example).
 

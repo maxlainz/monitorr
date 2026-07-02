@@ -293,6 +293,14 @@ First public release. monitorr watches viewing in Plex and manages episodes in S
 - **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
   automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
+[1.6.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.6.1
+[1.6.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.6.0
+[1.5.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.5.1
+[1.5.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.5.0
+[1.4.2]: https://github.com/maxlainz/monitorr/releases/tag/v1.4.2
+[1.4.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.4.1
+[1.4.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.4.0
+[1.3.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.3.0
 [1.2.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.2.1
 [1.2.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.2.0
 [1.1.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.1.0

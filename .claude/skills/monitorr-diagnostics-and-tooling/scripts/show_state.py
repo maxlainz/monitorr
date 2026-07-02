@@ -89,9 +89,7 @@ def main():
 
     # Activity.
     print("\n== activity ==")
-    rows = fetch_all(
-        db, "SELECT last_watch_at FROM series_activity WHERE tvdb_id = ?", (tvdb_id,)
-    )
+    rows = fetch_all(db, "SELECT last_watch_at FROM series_activity WHERE tvdb_id = ?", (tvdb_id,))
     if rows:
         found = True
         last = rows[0][0]
@@ -100,8 +98,10 @@ def main():
         print(f"  last_watch_at: {last}  ({age_text})")
         print("  (this clock gates GET re-arming via _is_armed and the grace sweeps)")
     else:
-        print("  no series_activity row — the show has no recorded viewing "
-              "(auto-normalize reduces such shows to pilot-only)")
+        print(
+            "  no series_activity row — the show has no recorded viewing "
+            "(auto-normalize reduces such shows to pilot-only)"
+        )
 
     # Watches, sorted by (season, episode); the max is the anchor floor.
     print("\n== recorded watches (episode_watch) ==")
@@ -115,8 +115,11 @@ def main():
         found = True
         floor = max((s, e) for s, e, _ in rows)
         for season, episode, watched_at in rows:
-            marker = "   <- ANCHOR FLOOR (max watch; runtime clamps to Sonarr-listed episodes)" \
-                if (season, episode) == floor else ""
+            marker = (
+                "   <- ANCHOR FLOOR (max watch; runtime clamps to Sonarr-listed episodes)"
+                if (season, episode) == floor
+                else ""
+            )
             print(f"  S{season:02d}E{episode:02d}  watched_at={watched_at}{marker}")
         print(f"  total: {len(rows)} watches; floor = S{floor[0]:02d}E{floor[1]:02d}")
     else:
@@ -137,8 +140,10 @@ def main():
             print(f"  {label}: {len(subset)}")
             for row_id, season, episode, reason, _, created_at, title in subset:
                 title_text = f"  {title}" if title else ""
-                print(f"    id={row_id}  S{season:02d}E{episode:02d}  reason={reason}  "
-                      f"created_at={created_at}{title_text}")
+                print(
+                    f"    id={row_id}  S{season:02d}E{episode:02d}  reason={reason}  "
+                    f"created_at={created_at}{title_text}"
+                )
     else:
         print("  (none)")
 

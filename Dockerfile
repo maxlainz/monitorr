@@ -1,4 +1,4 @@
-# Build: instala dependencias y el proyecto (no-editable) en un venv aislado con uv.
+# Build: installs the dependencies and the project (non-editable) into an isolated venv with uv.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -8,15 +8,15 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
-# Runtime: imagen mínima con solo el venv. Multi-arch (amd64/arm64): todas las deps tienen
-# wheels precompilados, así que no se compila nada al construir arm64.
+# Runtime: minimal image with only the venv. Multi-arch (amd64/arm64): every dependency ships
+# precompiled wheels, so nothing is compiled when building arm64.
 FROM python:3.12-slim
-# Metadatos de build (los inyecta el workflow de release; vacíos en builds locales).
+# Build metadata (injected by the release workflow; empty on local builds).
 ARG VERSION=0.0.0+dev
 ARG VCS_REF=
 ARG BUILD_DATE=
 LABEL org.opencontainers.image.title="monitorr" \
-      org.opencontainers.image.description="Monitoriza el visionado en Plex y gestiona episodios en Sonarr (monitorizar/conservar/borrar) solo vía API." \
+      org.opencontainers.image.description="Watches viewing in Plex and manages episodes in Sonarr (monitor/keep/delete) API-only." \
       org.opencontainers.image.source="https://github.com/maxlainz/monitorr" \
       org.opencontainers.image.url="https://github.com/maxlainz/monitorr" \
       org.opencontainers.image.documentation="https://github.com/maxlainz/monitorr#readme" \

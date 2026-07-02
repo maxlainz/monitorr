@@ -107,21 +107,17 @@ def check_b_unique_previews(db, checker):
     except sqlite3.OperationalError as exc:
         checker.report(name, False, f"table missing: {exc}")
         return
-    problems = [
-        f"tvdb={t} S{s:02d}E{e:02d} has {n} preview rows" for t, s, e, n in dupes
-    ]
+    problems = [f"tvdb={t} S{s:02d}E{e:02d} has {n} preview rows" for t, s, e, n in dupes]
     if "deletion_pending_unique" not in indexes:
         problems.append("partial unique index deletion_pending_unique is missing (migration 3)")
     checker.report(name, not problems, "; ".join(problems))
 
 
 def check_c_no_previews_in_real_mode(db, checker):
-    name = "(c) real mode (dry_run=\"0\") has no pending previews"
+    name = '(c) real mode (dry_run="0") has no pending previews'
     try:
         row = db.execute("SELECT value FROM setting WHERE key = 'dry_run'").fetchone()
-        pending = db.execute(
-            "SELECT COUNT(*) FROM deletion_log WHERE dry_run = 1"
-        ).fetchone()[0]
+        pending = db.execute("SELECT COUNT(*) FROM deletion_log WHERE dry_run = 1").fetchone()[0]
     except sqlite3.OperationalError as exc:
         checker.report(name, False, f"table missing: {exc}")
         return
@@ -132,7 +128,9 @@ def check_c_no_previews_in_real_mode(db, checker):
     checker.report(
         name,
         pending == 0,
-        "" if pending == 0 else f"{pending} preview rows remain "
+        ""
+        if pending == 0
+        else f"{pending} preview rows remain "
         "(set_dry_run should have cleared them when dry-run was disabled)",
     )
 
@@ -140,9 +138,12 @@ def check_c_no_previews_in_real_mode(db, checker):
 def check_d_watermark(db, checker):
     name = "(d) sync timestamps parse and are not in the future"
     try:
-        settings = dict(db.execute(
-            "SELECT key, value FROM setting WHERE key IN ('history_watermark', 'last_full_sync')"
-        ))
+        settings = dict(
+            db.execute(
+                "SELECT key, value FROM setting"
+                " WHERE key IN ('history_watermark', 'last_full_sync')"
+            )
+        )
     except sqlite3.OperationalError as exc:
         checker.report(name, False, f"table missing: {exc}")
         return
@@ -170,13 +171,15 @@ def check_e_user_version(db, checker):
         checker.report(name, True)
     elif version > EXPECTED_USER_VERSION:
         checker.report(
-            name, False,
+            name,
+            False,
             f"user_version={version}: MIGRATIONS grew — update EXPECTED_USER_VERSION in "
             "this script to len(MIGRATIONS) from src/monitorr/db.py",
         )
     else:
         checker.report(
-            name, False,
+            name,
+            False,
             f"user_version={version}: DB predates the current schema (app never migrated it?)",
         )
 

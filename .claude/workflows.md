@@ -79,6 +79,7 @@ is edited via the Web UI. Defined in [`config.py`](../src/monitorr/config.py).
 | Var | Purpose | Default | Required |
 |---|---|---|---|
 | `MONITORR_CONFIG_DIR` | Data dir (SQLite, client identity) | `/config` | no |
+| `MONITORR_HOST` | Bind address for the Web UI / API | `0.0.0.0` | no |
 | `MONITORR_PORT` | Listening port | `8080` | no |
 | `MONITORR_LOG_LEVEL` | Log level | `INFO` | no |
 | `MONITORR_PLEX_POLL_INTERVAL` | Seconds between session polls | `30` | no |
@@ -87,7 +88,7 @@ is edited via the Web UI. Defined in [`config.py`](../src/monitorr/config.py).
 | `MONITORR_FULL_SYNC_INTERVAL` | Rolling floor (s since last FULL) that forces a full reconciliation; `0` disables the floor | `2592000` | no |
 | `MONITORR_SYNC_ON_STARTUP` | On startup, run a sync if a full is overdue (never ran or floor elapsed) | `true` | no |
 | `MONITORR_WEBHOOK_SECRET` | Token for the optional webhook endpoint | (empty) | no |
-| `TZ` | Time zone (grace periods) | `UTC` | no |
+| `TZ` | Time zone (log/display timestamps; grace math is UTC elapsed-time) | `UTC` | no |
 
 Container-only (read by [`docker-entrypoint.sh`](../docker-entrypoint.sh), **not** by `config.py`):
 

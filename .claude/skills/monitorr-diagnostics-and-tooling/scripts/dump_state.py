@@ -31,11 +31,11 @@ DEFAULT_DB = "/config/monitorr.db"
 SENSITIVE_MARKERS = ("token", "api_key", "secret")
 
 # Keys handled in dedicated sections (still listed in the settings table).
-POLICY_KEY = "policy"          # constants.POLICY
-DRY_RUN_KEY = "dry_run"        # constants.DRY_RUN ("1"/"0"; absent = dry-run ON)
+POLICY_KEY = "policy"  # constants.POLICY
+DRY_RUN_KEY = "dry_run"  # constants.DRY_RUN ("1"/"0"; absent = dry-run ON)
 WATERMARK_KEY = "history_watermark"  # constants.HISTORY_WATERMARK (ISO-8601 UTC)
-LAST_FULL_KEY = "last_full_sync"     # constants.LAST_FULL_SYNC (ISO-8601 UTC)
-LAST_SYNC_KEY = "last_sync"          # sync.py _LAST_SYNC (JSON summary)
+LAST_FULL_KEY = "last_full_sync"  # constants.LAST_FULL_SYNC (ISO-8601 UTC)
+LAST_SYNC_KEY = "last_sync"  # sync.py _LAST_SYNC (JSON summary)
 
 DELETION_LOG_LIMIT = 20
 
@@ -127,12 +127,14 @@ def dump_dry_run(settings):
     if raw is None:
         print("  ON (key absent — the default; all Sonarr writes are no-ops)")
     elif raw == "1":
-        print("  ON (\"1\" — all Sonarr writes are no-ops; deletions recorded as previews)")
+        print('  ON ("1" — all Sonarr writes are no-ops; deletions recorded as previews)')
     elif raw == "0":
-        print("  OFF (\"0\" — REAL MODE: deletions and Sonarr writes are live)")
+        print('  OFF ("0" — REAL MODE: deletions and Sonarr writes are live)')
     else:
-        print(f"  UNEXPECTED VALUE {raw!r} (code treats anything but \"1\" as OFF... "
-              "get_dry_run: raw == \"1\")")
+        print(
+            f'  UNEXPECTED VALUE {raw!r} (code treats anything but "1" as OFF... '
+            'get_dry_run: raw == "1")'
+        )
 
 
 def dump_sync_state(settings):
@@ -154,8 +156,10 @@ def dump_sync_state(settings):
         return
     at = info.get("at", "?")
     print(f"  last_sync: at={at} (age: {age_str(at)}) mode={info.get('mode', '?')}")
-    print(f"             shows={info.get('shows', '?')} matched={info.get('matched', '?')} "
-          f"normalized={info.get('normalized', '?')} searched={info.get('searched', '?')}")
+    print(
+        f"             shows={info.get('shows', '?')} matched={info.get('matched', '?')} "
+        f"normalized={info.get('normalized', '?')} searched={info.get('searched', '?')}"
+    )
 
 
 def dump_activity(db):
