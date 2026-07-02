@@ -4,6 +4,48 @@ All notable changes to monitorr. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the versioning is
 [SemVer](https://semver.org/).
 
+## [1.6.2] - 2026-07-02
+
+### Added
+
+- **Skill library for maintainers (human or AI)** (`.claude/skills/`, 16 skills): task-routed
+  runbooks and references — change control (incl. the previously unwritten discipline rules:
+  adversarial review for anchor-touching changes, never trusting volatile Plex state,
+  mechanism-explaining changelog entries), a symptom-indexed debugging playbook, failure
+  archaeology (every historical incident with commit hashes, mechanisms and the regression tests
+  that pin them), the architecture contract (the load-bearing invariants and why they exist),
+  canonical window-engine and Plex/Sonarr API references, config/build/run-and-operate guides,
+  read-only diagnostic scripts for the SQLite state, a validation/QA map, docs maintenance with a
+  standing-errata table, an executable campaign on the season-pack grab/cancel oscillation, and
+  proof/research methodology guides. Everything verified against the code (formulas, line
+  anchors, log formats, hashes) and cross-reviewed by independent factual/doctrine/usability
+  passes before landing.
+
+### Changed
+
+- **`CLAUDE.md` is now the single documentation router**: the documentation layers in reading
+  order, a task → skill routing table for all 16 skills, and two new binding rules — code is
+  ground truth (doc/code disagreements are fixed in-commit or filed in the standing-errata
+  table), and a change that invalidates a skill's Provenance-guarded fact updates that skill in
+  the same commit.
+
+### Fixed
+
+- **14 documentation/code disagreements** (catalogued and retired in the skills' standing-errata
+  table): `architecture.md` still described the implemented engine as a skeleton ("signatures +
+  TODO") and Normalize-to-Pilot as manual/opt-in — it is automatic and sync-triggered (the manual
+  button was removed before 1.0.0) — and listed per-series policy editing as pending (shipped in
+  1.4.0); `sonarr.md` referenced the removed Normalize button; the README and `.env.example`
+  omitted `MONITORR_HOST` and `MONITORR_FULL_SYNC_INTERVAL`, described `MONITORR_SYNC_ON_STARTUP`
+  with the pre-1.5.0 semantics ("once if it never ran" — it actually syncs only when a **full**
+  is overdue) and claimed `TZ` affects the grace periods (grace math is UTC elapsed-time; `TZ`
+  only affects displayed timestamps); the README image-tags example was frozen at 1.0.0;
+  `behavior.md` omitted the `S01` Always-Have pattern; `tech-stack.md` omitted
+  `engine/policy.py`/`actions.py` and pointed at a nonexistent README section; the CHANGELOG's
+  bottom link references stopped at 1.2.1; and the English-only rule was violated by Spanish
+  comments in the `Dockerfile` (including the **public OCI image description label**),
+  `release.yml` and `tests/conftest.py` — all translated. No runtime behavior changes.
+
 ## [1.6.1] - 2026-06-10
 
 ### Fixed
@@ -293,6 +335,7 @@ First public release. monitorr watches viewing in Plex and manages episodes in S
 - **Single multi-arch Docker image** (amd64/arm64), `/health` and `/version` endpoints, and
   automated publishing to Docker Hub and GHCR via `vX.Y.Z` tags.
 
+[1.6.2]: https://github.com/maxlainz/monitorr/releases/tag/v1.6.2
 [1.6.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.6.1
 [1.6.0]: https://github.com/maxlainz/monitorr/releases/tag/v1.6.0
 [1.5.1]: https://github.com/maxlainz/monitorr/releases/tag/v1.5.1
