@@ -56,7 +56,8 @@ stay monitored at the season level (so new episodes inherit it), while their alr
 ## Always-Have (protection)
 
 Episodes that are **never** deleted even if they fall outside KEEP or a grace period. Patterns:
-`S01E01` (pilot), `S*E01` (first episode of each season), `S*` (full season). It's
+`S01E01` (pilot), `S*E01` (first episode of each season), `S01` (a single whole season),
+`S*` (every season, i.e. the whole show). It's
 the first check before any deletion. Unlike the merely-kept episodes (anchor/KEEP), Always-Have
 episodes also **stay monitored** — the only protection that keeps both the file **and** the
 monitoring — so Sonarr can upgrade them in place (and re-fetch them if their file is missing).

@@ -1,7 +1,7 @@
 # Architecture
 
-> Fixed stack (see [`tech-stack.md`](tech-stack.md)). A runnable skeleton exists; the
-> Plex/Sonarr/window logic is in place as a contract (signatures + TODO). Keep it up to date per
+> Fixed stack (see [`tech-stack.md`](tech-stack.md)). The Plex/Sonarr/window logic is fully
+> implemented and tested (published releases since v1.0.0). Keep it up to date per
 > [`documentation.md`](documentation.md).
 
 ## Purpose
@@ -29,7 +29,8 @@ Organized by domain (not by layer):
 - **Sync/reconciliation** — scans the Plex library and applies the window to the last
   watched of each show (button, on startup, periodic). Covers shows already started, manual marks
   and offline viewing. See [`behavior.md`](behavior.md).
-- **Window engine** — applies GET / KEEP / Always-Have / grace; "force to Pilot" (opt-in). All
+- **Window engine** — applies GET / KEEP / Always-Have / grace; automatic Normalize to Pilot
+  of managed shows with no recorded viewing (sync-triggered, `auto_normalize`). All
   writes to Sonarr go through `engine/actions.py`, guarded by dry-run. See [`behavior.md`](behavior.md).
 - **Sonarr client** — monitor/unmonitor, trigger searches and delete files. See
   [`sonarr.md`](sonarr.md).
@@ -70,12 +71,14 @@ Organized by domain (not by layer):
    centralized switch in `engine/actions.py`.
 8. **Reconciliation in addition to live detection**. *Why*: polling/webhook only see
    playbacks; the sync picks up what's already watched, what's marked by hand and what's watched with monitorr off.
-9. **Force to Pilot opt-in (manual)**. *Why*: touching Sonarr's monitoring state is
-   sensitive; it's done only when the user requests it.
+9. **Normalize to Pilot is automatic (sync-only trigger)**. *Why*: its job — preventing
+   Sonarr's RSS/cron from accumulating downloads of newly added, unwatched shows — needs no
+   user action to be timely; the MVP's manual button was removed once every sync normalized
+   unwatched shows anyway. Configurable via `auto_normalize` (ON by default, per-series
+   override) and guarded by dry-run. See [`behavior.md`](behavior.md).
 
 ## Pending decisions
 
 - Aired vs absolute order (anime): the MVP uses aired order; support absolute later.
 - Multi-user support (risk of deleting what someone else hasn't watched) — out of v1.
 - The Web UI's own login (v1 assumes a trusted LAN / reverse proxy).
-- Editing the per-series policy (override) from the UI; today the override only enables/disables.

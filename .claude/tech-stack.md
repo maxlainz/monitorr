@@ -16,8 +16,7 @@ deploy, env vars) are in [`workflows.md`](workflows.md).
 
 ## Directory layout
 
-Modules **by domain**, not by layer (see [`rules.md`](rules.md)). Structure in
-[`README.md`](../README.md) and detailed:
+Modules **by domain**, not by layer (see [`rules.md`](rules.md)):
 
 - `src/monitorr/main.py` — FastAPI app, `lifespan` (starts pollers), `/health`, mounts web.
 - `src/monitorr/config.py` — `Settings` (pydantic-settings, env `MONITORR_*`).
@@ -25,7 +24,9 @@ Modules **by domain**, not by layer (see [`rules.md`](rules.md)). Structure in
 - `src/monitorr/logging.py` — logger configuration (no `print`).
 - `src/monitorr/plex/` — login, discovery, poller, webhook, correlation. See [`plex.md`](plex.md).
 - `src/monitorr/sonarr/` — Sonarr API client. See [`sonarr.md`](sonarr.md).
-- `src/monitorr/engine/` — `window.py` and `grace.py`. See [`behavior.md`](behavior.md).
+- `src/monitorr/engine/` — `window.py` (GET/KEEP window), `grace.py` (grace sweep),
+  `policy.py` (policy model/resolution), `actions.py` (dry-run-gated Sonarr writes).
+  See [`behavior.md`](behavior.md).
 - `src/monitorr/web/` — `routes.py`, `templates/` (Jinja2), `static/` (vendored htmx + pico).
 
 ## Decisions and why

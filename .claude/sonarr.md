@@ -12,8 +12,9 @@ Shows managed by monitorr should be added in Sonarr with **Monitor: "Pilot"** (o
 **never "All"**: monitorr decides what gets monitored (the N ahead) and what gets deleted (the N
 behind); if Sonarr monitors "All" it will try to download the whole show on its own and fight with
 monitorr. With "Pilot", Sonarr grabs `S01E01` (which is also the default `Always-Have`) and monitorr
-takes over forward. Alternative without touching Sonarr by hand: the **"Normalize to Pilot"** button
-(see [`behavior.md`](behavior.md)) sets it that way via API. Also leave **"Unmonitor deleted episodes"**
+takes over forward. Alternative without touching Sonarr by hand: the **automatic Normalize to
+Pilot** (each sync normalizes managed shows with no recorded viewing — see
+[`behavior.md`](behavior.md)) sets it that way via API. Also leave **"Unmonitor deleted episodes"**
 enabled (Settings → Media Management) as a safety net; monitorr already unmonitors on delete.
 
 ## Connection and auth

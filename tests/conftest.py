@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 
 import pytest_asyncio
 
-# La app crea la BD en MONITORR_CONFIG_DIR al arrancar (lifespan). En tests apuntamos a un
-# directorio temporal antes de importar la app, en vez de al /config por defecto.
+# The app creates the DB in MONITORR_CONFIG_DIR at startup (lifespan). Tests point it at a
+# temporary directory before importing the app, instead of the default /config.
 os.environ.setdefault("MONITORR_CONFIG_DIR", tempfile.mkdtemp(prefix="monitorr-test-"))
 
 from monitorr.config import get_settings  # noqa: E402
