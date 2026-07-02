@@ -1,6 +1,6 @@
 ---
 name: monitorr-diagnostics-and-tooling
-description: Runnable read-only diagnostic scripts for a live or stopped monitorr instance plus safe DB access rules. Use to inspect /config/monitorr.db (settings, policy, dry-run, watermark, last_sync, watches, anchor floor, deletion log), run offline invariant checks, deep-dive one show, snapshot a WAL database, or turn on DEBUG log tracing. NOT for symptom-to-fix runbooks (use monitorr-debugging-playbook), formula definitions (monitorr-window-engine-reference), or config semantics (monitorr-config-and-flags).
+description: Runnable read-only diagnostic scripts for a live or stopped monitorr instance plus safe DB access rules. Use to inspect /config/monitorr.db (settings, policy, dry-run, watermark, last_sync, watches, anchor floor, deletion log), run offline invariant checks, deep-dive one show, snapshot a WAL database, or enable DEBUG log tracing. NOT for symptom-to-fix runbooks (monitorr-debugging-playbook), formulas (monitorr-window-engine-reference), or config semantics (monitorr-config-and-flags).
 ---
 
 # monitorr diagnostics and tooling
