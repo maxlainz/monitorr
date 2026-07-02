@@ -197,8 +197,9 @@ shows") — monitorr cannot enforce them; treat them as operator guidance:
   "All", or Sonarr fights monitorr by downloading the whole show. With "Pilot", Sonarr grabs
   S01E01 (the default Always-Have) and monitorr takes over forward. No manual step is needed for
   already-added shows: monitorr's normalize-to-pilot runs AUTOMATICALLY each sync for managed
-  shows with no recorded viewing. (`.claude/sonarr.md` still mentions a "Normalize to Pilot"
-  *button*; that button was removed in commit 9468870 — see `monitorr-docs-and-writing`.)
+  shows with no recorded viewing. (`.claude/sonarr.md` used to mention a "Normalize to Pilot"
+  *button* — removed from the code in commit 9468870; the doc was stale until 2026-07-02 and now
+  says "automatic Normalize to Pilot"; retired erratum E3 in `monitorr-docs-and-writing`.)
 - **"Unmonitor deleted episodes"** enabled (Sonarr Settings → Media Management) as a safety net
   against re-downloads after deletion; monitorr already unmonitors on delete via API.
 

@@ -187,8 +187,9 @@ condition.
   for every managed show with no recorded viewing, so the manual trigger had no remaining use
   case and was pure UI/route surface to maintain. Removed in commit 9468870 (2026-05-30):
   route, button, and the Series-page "Pilot" column deleted; `normalize_to_pilot` kept as an
-  internal sync action. (Note: `.claude/architecture.md` is stale here — it still describes
-  normalize as manual/opt-in; the code truth is automatic-only. See `monitorr-docs-and-writing`.)
+  internal sync action. (Note: `.claude/architecture.md` was stale here — it described normalize
+  as manual/opt-in while the code truth is automatic-only — until fixed on 2026-07-02; retired
+  erratum E1 in `monitorr-docs-and-writing`.)
 - **Reopen if**: a policy is added where auto-normalize is disabled per series
   (`auto_normalize=false`) AND users demonstrably need a one-off reset without re-enabling it —
   i.e. the redundancy argument breaks. Until then, the automatic path covers every case.

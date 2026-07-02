@@ -173,8 +173,9 @@ What each interval means, one line each (defaults and validation: `monitorr-conf
   (manual "Sync now" still works).
 - `MONITORR_FULL_SYNC_INTERVAL` — rolling full-sync floor; `0` disables it.
 - `MONITORR_SYNC_ON_STARTUP` — boot-time sync only when a FULL is overdue (never ran, or the
-  rolling floor elapsed while down). (README's older wording "if it never ran" is stale — see
-  `monitorr-docs-and-writing`.)
+  rolling floor elapsed while down). (README's pre-1.5.0 wording "if it never ran" was stale
+  until 2026-07-02 — fixed; retired erratum E7 in `monitorr-docs-and-writing`. The README now
+  says "sync if a full one is overdue".)
 
 Interval validators fail fast at startup (`ge=1` / `ge=0` in `config.py`) because a zero/negative
 sleep would hot-loop against Plex/Sonarr. Loop exceptions are logged and the loop continues; the
@@ -227,9 +228,10 @@ tasks are cancelled cleanly on shutdown.
   effect is LOG TIMESTAMP display (Python logging's `%(asctime)s` uses local time).
 - Grace-period day math itself is TZ-independent in code: `age_days` in
   `src/monitorr/engine/policy.py` computes elapsed seconds against `datetime.now(UTC)` over
-  UTC-stored timestamps, i.e. continuous fractional days, not calendar days. (README.md:126 and
-  `.env.example` tie TZ to the grace-period calculation — stale relative to the code; errata
-  row E14 in `monitorr-docs-and-writing`.)
+  UTC-stored timestamps, i.e. continuous fractional days, not calendar days. (The README and
+  `.env.example` used to tie TZ to the grace-period calculation — stale until 2026-07-02, now
+  fixed to "log/display timestamps; grace math is UTC"; retired erratum E14 in
+  `monitorr-docs-and-writing`.)
 - The rolling full-sync floor and the history watermark are likewise UTC-based; host clock skew,
   not TZ, is what would distort them.
 

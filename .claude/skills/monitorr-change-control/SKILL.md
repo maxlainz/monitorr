@@ -113,10 +113,11 @@ Trigger: `push` of tags `v*.*.*`. Steps, in order:
 | Release notes | `awk` prints the lines between `^## \[X.Y.Z\]` and the next `^## \[` in `CHANGELOG.md` into `release_notes.md` |
 | GitHub Release | `softprops/action-gh-release@v2` with `body_path: release_notes.md` and `generate_release_notes: true` (auto-generated notes are appended; if the changelog section is missing, ONLY those remain) |
 
-Notes: `release.yml`'s comments/step names are Spanish — known erratum against the English-only
-rule, recorded in `monitorr-docs-and-writing`; do not imitate it. The bottom link-reference list
-of `CHANGELOG.md` stops at 1.2.1 (stale — see `monitorr-docs-and-writing`); it does NOT affect
-note extraction, which matches section headers only.
+Notes: `release.yml`'s comments/step names were Spanish until 2026-07-02 — fixed in the
+English-only sweep (retired erratum E8 in `monitorr-docs-and-writing`); keep new edits English.
+The bottom link-reference list of `CHANGELOG.md` was stale (stopped at 1.2.1) until 2026-07-02 —
+fixed, refs now cover every section (retired erratum E9); it never affected note extraction,
+which matches section headers only.
 
 ## 6. What requires change-control (gate table)
 

@@ -13,8 +13,10 @@ description: >-
 # monitorr configuration and flags
 
 Canonical inventory of everything configurable in monitorr, verified against the code at v1.6.1
-(2026-07-02). Code is ground truth; the README and `.env.example` are stale in a few spots noted
-below (errata live in `monitorr-docs-and-writing`).
+(2026-07-02). Code is ground truth; the README and `.env.example` used to be stale in a few
+spots (undocumented `MONITORR_HOST`/`MONITORR_FULL_SYNC_INTERVAL`, pre-1.5.0 sync-on-startup
+wording, TZ-affects-grace claim) — all fixed on 2026-07-02; the retired errata live in
+`monitorr-docs-and-writing`.
 
 Jargon used here, defined once: **dry-run** = master switch (ON by default) that turns every
 Sonarr write into a logged no-op; **GET / KEEP** = the counts of episodes kept ahead of / behind
@@ -45,19 +47,19 @@ comment at `config.py:21-23`).
 ## 2. Env vars — full table
 
 Source of truth: `src/monitorr/config.py` (class `Settings`). "README?" = present in the README
-env table (`README.md` around lines 118-126) — the code column wins where they disagree.
+env table (`README.md` around lines 116-128) — the code column wins where they disagree.
 
 | Var | Default | Validation | Effect | README? |
 |---|---|---|---|---|
 | `MONITORR_CONFIG_DIR` | `/config` | Path | Data dir; DB is `<dir>/monitorr.db` (`db_path` property). Docker image pins it to `/config` via `ENV` in the Dockerfile | yes |
-| `MONITORR_HOST` | `0.0.0.0` | str | Uvicorn bind address (`main.py` `run()`) | **no — undocumented** |
+| `MONITORR_HOST` | `0.0.0.0` | str | Uvicorn bind address (`main.py` `run()`) | yes (undocumented until 2026-07-02 — retired erratum E11) |
 | `MONITORR_PORT` | `8080` | int | Uvicorn listen port | yes |
 | `MONITORR_LOG_LEVEL` | `INFO` | str | Root logging level (`logging.py`), `DEBUG/INFO/WARNING/ERROR` | yes |
 | `MONITORR_PLEX_POLL_INTERVAL` | `30` | `ge=1` | Seconds between Plex session polls (live viewing detection) | yes |
 | `MONITORR_GRACE_SWEEP_INTERVAL` | `3600` | `ge=1` | Seconds between grace-period sweeps (deferred deletions) | yes |
 | `MONITORR_SYNC_INTERVAL` | `21600` | `ge=0` | Seconds between periodic syncs; `0` = the periodic sync loop is never created (`main.py:54`) | yes |
-| `MONITORR_FULL_SYNC_INTERVAL` | `2592000` (30 d) | `ge=0` | Rolling floor: seconds since the last FULL sync after which the next sync is promoted to full; `0` disables the floor (full only on manual "Sync now", dep connection, or a blind history sweep) | **no — undocumented** |
-| `MONITORR_SYNC_ON_STARTUP` | `true` | bool | Run a sync at startup **only when a FULL is overdue** — never ran, or the rolling floor elapsed while the app was down (`main.py:60` + `sync.full_sync_due()`). The README/`.env.example` wording "if it never ran" is stale (pre-1.5.0) | yes (stale wording) |
+| `MONITORR_FULL_SYNC_INTERVAL` | `2592000` (30 d) | `ge=0` | Rolling floor: seconds since the last FULL sync after which the next sync is promoted to full; `0` disables the floor (full only on manual "Sync now", dep connection, or a blind history sweep) | yes (undocumented until 2026-07-02 — retired erratum E6) |
+| `MONITORR_SYNC_ON_STARTUP` | `true` | bool | Run a sync at startup **only when a FULL is overdue** — never ran, or the rolling floor elapsed while the app was down (`main.py:60` + `sync.full_sync_due()`). The README/`.env.example` "if it never ran" wording was stale (pre-1.5.0) until 2026-07-02 — both now say "sync if a full one is overdue" (retired erratum E7) | yes |
 | `MONITORR_WEBHOOK_SECRET` | `""` (empty) | str | When non-empty, pins the Plex webhook secret; overrides the SQLite one and disables the UI "Regenerate" button (see footguns) | yes |
 | `MONITORR_BUILD_SHA` | `""` | str | Build metadata shown by `GET /version`; injected by the Dockerfile `ENV` from the `VCS_REF` build arg (empty in dev) | no (build-internal) |
 | `MONITORR_BUILD_DATE` | `""` | str | Same, from the `BUILD_DATE` build arg | no (build-internal) |
@@ -226,6 +228,6 @@ Re-verify each table with one command from the repo root:
 | Override snapshot/merge/reset | `grep -n "policy_json\|model_dump" src/monitorr/engine/policy.py src/monitorr/web/routes.py` |
 | Entrypoint PUID/PGID behavior | `cat docker-entrypoint.sh` |
 | Docker-injected build vars | `grep -n "MONITORR_" Dockerfile` |
-| README env table (drift check) | `grep -n "MONITORR_" README.md .env.example` |
+| README env table (drift check) | `grep -n "MONITORR_" README.md .env.example` — must list every var above marked "yes", incl. `MONITORR_HOST` and `MONITORR_FULL_SYNC_INTERVAL` (documented since 2026-07-02; a missing var = reopened erratum) |
 | Migration that resets `last_full_sync` | `grep -n "last_full_sync" src/monitorr/db.py` |
 | Current version (date-stamp for this file) | `grep -n "^version" pyproject.toml` |

@@ -118,9 +118,10 @@ Runtime-stage details (verify against `Dockerfile`):
   one-liner GET to `http://localhost:8080/health`, exit 0 iff HTTP 200 (no curl in the image).
 - `.dockerignore` trims the build context (`.git`, `.github`, `.claude`, `.venv`, `config`,
   caches, `*.db*`, `tests`, `CLAUDE.md`); the Dockerfile also copies only explicit paths.
-- Known erratum: `Dockerfile` comments and its OCI description label are Spanish, as are
-  release.yml comments — violates the English-only rule (`.claude/rules.md` is authoritative;
-  the standing-errata table lives in monitorr-docs-and-writing).
+- Historical note: `Dockerfile` comments and its OCI description label were Spanish, as were
+  release.yml comments — an English-only-rule violation fixed on 2026-07-02 (retired erratum E8
+  in monitorr-docs-and-writing's errata table). All three are English now; keep them that way
+  (`.claude/rules.md` is authoritative).
 
 Local builds:
 

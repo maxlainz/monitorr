@@ -410,7 +410,8 @@ Cause: **auto-normalize**. Every sync, every managed+enabled show with `auto_nor
 (default True) and ZERO rows in `episode_watch` is reduced to pilot-only — files beyond the
 pilot and Always-Have are DELETED, everything else unmonitored (`sync.py::_reconcile_managed` →
 `engine/actions.py::normalize_to_pilot`). This is AUTOMATIC; there is no manual button or route
-(`.claude/architecture.md` is stale here — see `monitorr-docs-and-writing`).
+(`.claude/architecture.md` was stale here until 2026-07-02 — fixed, it now says automatic; see
+the retired errata table in `monitorr-docs-and-writing`).
 
 When it bites: a show you watched BEFORE installing monitorr, whose plays never made it into the
 watch store — Plex history unavailable/disabled, user filter excluding the watcher, or the show's

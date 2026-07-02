@@ -233,8 +233,9 @@ do not. With `dry_run=True` Sonarr is never called — intent is logged, deletio
 `policy.auto_normalize` and NO recorded viewing (`sync.py:315-321` — `_reconcile_managed`,
 "set-and-forget"). There is NO manual route or button (`web/routes.py` has none; the button was
 removed in 9468870). The only opt-outs are the `auto_normalize` policy field (global or
-per-series override) or disabling the series. Note: `.claude/architecture.md` is stale here —
-see `monitorr-docs-and-writing`.
+per-series override) or disabling the series. Note: `.claude/architecture.md` was stale here
+until 2026-07-02 — fixed, it now describes normalize as automatic; see the retired errata table
+in `monitorr-docs-and-writing`.
 
 ## 5. Entry points into `apply_window`
 

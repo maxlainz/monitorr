@@ -413,9 +413,10 @@ UI button for it existed briefly in the MVP era (introduced around f59a4e5/961a5
 normalization AUTOMATIC on every sync. Today there is no manual route or button
 (`grep -n normalize src/monitorr/web/routes.py` finds only the `auto_normalize` policy flag);
 the automatic path is `actions.normalize_to_pilot` (`src/monitorr/engine/actions.py:92`) called
-from the sync. `.claude/architecture.md` and `.claude/sonarr.md` are stale here — errata E1/E3
-in `monitorr-docs-and-writing`; the retirement rationale is the ledger exemplar in
-`monitorr-research-methodology` §4.
+from the sync. `.claude/architecture.md` and `.claude/sonarr.md` were stale here until
+2026-07-02 (still describing the manual/opt-in button) — fixed, both now describe the automatic
+normalize; retired errata E1/E3 in `monitorr-docs-and-writing`. The retirement rationale is the
+ledger exemplar in `monitorr-research-methodology` §4.
 
 ## When NOT to use this skill
 
@@ -427,7 +428,8 @@ in `monitorr-docs-and-writing`; the retirement rationale is the ledger exemplar 
 - You need the canonical window/grace formulas → `monitorr-window-engine-reference`.
 - You are working the season-pack grab/cancel oscillation → `monitorr-season-pack-campaign`
   (this catalog only records where the guard came from, INC-04).
-- You want to fix the stale docs recorded above → `monitorr-docs-and-writing` (errata owner).
+- Doc/code disagreements, including the retired E1/E3 rows referenced above →
+  `monitorr-docs-and-writing` (errata owner).
 - You are about to CHANGE anchor/sync/window code → read the synthesis here, then follow
   `monitorr-change-control` (adversarial review + regression test required).
 

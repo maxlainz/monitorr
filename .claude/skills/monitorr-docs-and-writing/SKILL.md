@@ -54,7 +54,9 @@ New `.claude/` docs must be registered in `CLAUDE.md`'s Context table (see §2).
 5. **Explain the why, not the what**: invariants, trade-offs, pitfalls, external constraints.
    Never narrate what the code already says. Compact and directive; no filler.
 6. **English only** for docs, comments, commit messages and UI; English identifiers, file names,
-   branches, env vars (`.claude/rules.md` "Language"). See erratum E8 for the known violations.
+   branches, env vars (`.claude/rules.md` "Language"). The known violations (Spanish in the
+   Dockerfile, release.yml and one conftest comment) were fixed on 2026-07-02 — retired
+   erratum E8 below.
 
 Committing a doc change follows the normal dev-branch flow → `monitorr-change-control`.
 
@@ -75,29 +77,39 @@ The **sole registry** of known doc/code disagreements. Rules of the table itself
 - New drift discovered anywhere → add a row here (same commit as the discovery, if committing).
 
 All quotes and file evidence below re-verified against the repo on 2026-07-02 (v1.6.1, c580f65).
+Later the same day, **all 14 errata were fixed** — E4 in commit `219cd2e` ("docs: upgrade
+CLAUDE.md into the single router"), the other 13 in `f9f3689` ("docs+chore: fix all 14 verified
+doc/code errata; English-only sweep") — and each fix was verified against the current files.
 
 ### Open errata
 
 | ID | Doc + stale claim (quoted) | Code truth (file evidence) | Severity | Status | Fixed-in |
 |---|---|---|---|---|---|
-| E1 | `.claude/architecture.md:32` — window engine does `"force to Pilot" (opt-in)`; `:73-74` decision #9 `"Force to Pilot opt-in (manual)"` … `"it's done only when the user requests it"` | Normalize-to-Pilot is **automatic**: `src/monitorr/sync.py:317` calls `actions.normalize_to_pilot` every sync for every managed show with no recorded viewing; no manual route/button in `src/monitorr/web/routes.py`; `.claude/behavior.md:138` correctly says "There is no manual action" | HIGH | open | |
-| E2 | `.claude/architecture.md:81` (Pending decisions) — `"Editing the per-series policy (override) from the UI; today the override only enables/disables."` | Full per-series policy editing shipped in v1.4.0: `src/monitorr/web/routes.py:442` `save_series_policy`, `src/monitorr/engine/policy.py:51` `effective_policy` | HIGH | open | |
-| E3 | `.claude/sonarr.md:15` — `'the **"Normalize to Pilot"** button … sets it that way via API'` | No such button exists; the manual button was removed in commit `9468870` (only automatic normalize remains) | MEDIUM | open | |
-| E4 | `CLAUDE.md` — `"v1.0.0 published on Docker Hub and GHCR"` | Current version is 1.6.1 (`pyproject.toml:3` `version = "1.6.1"`) | MEDIUM | open | |
-| E5 | `.claude/architecture.md:3-4` header — `"A runnable skeleton exists; the Plex/Sonarr/window logic is in place as a contract (signatures + TODO)"` | Fully implemented and tested since v1.0.0; zero TODO/FIXME in `src/` | MEDIUM | open | |
-| E6 | `README.md` env table and `.env.example` omit `MONITORR_FULL_SYNC_INTERVAL` | Exists: `src/monitorr/config.py:30` `full_sync_interval: int = Field(default=2592000, ge=0)` (30 d; 0 disables); documented in `.claude/workflows.md:87` | MEDIUM | open | |
-| E7 | `README.md:124` + `.env.example:24` — `MONITORR_SYNC_ON_STARTUP`: `"Sync once on startup if it never ran"` | Since 1.5.0 it syncs on startup only when a FULL is overdue (never ran OR rolling floor elapsed): `src/monitorr/main.py` + `sync.full_sync_due()`; `.claude/workflows.md:88` has the correct wording | MEDIUM | open | |
-| E8 | `.claude/rules.md` English-only rule vs reality | `Dockerfile` comments (e.g. line 1) AND its public OCI `description` label (`Dockerfile:19`) are Spanish; `.github/workflows/release.yml` comments/step names/messages are Spanish (e.g. line 3); `tests/conftest.py:7-8` has one Spanish comment block. `src/`, entrypoint and compose are clean English | MEDIUM | open | |
-| E9 | `CHANGELOG.md` bottom link references stop at `[1.2.1]` | Sections exist to 1.6.1; link refs for 1.3.0–1.6.1 are missing (see §4, link convention) | LOW | open | |
-| E10 | `README.md:96` — image published `"with tags :1, :1.0, :1.0.0 and :latest"` | metadata-action produces `:1.6.1`, `:1.6`, `:1`, `:latest` for the current release; `.claude/workflows.md` generalizes correctly as `:X.Y.Z`/`:X.Y`/`:X` | LOW | open | |
-| E11 | `MONITORR_HOST` documented nowhere (README, `.env.example`, workflows.md) | Exists: `src/monitorr/config.py:18` `host: str = "0.0.0.0"`, used in `src/monitorr/main.py` | LOW | open | |
-| E12 | `.claude/behavior.md:59` Always-Have pattern list — `"S01E01 (pilot), S*E01 (first episode of each season), S* (full season)"` omits `S01` (single whole season) | `src/monitorr/engine/policy.py:89` regex `^S(\d+|\*)(?:E(\d+|\*))?$` supports `S01E01`, `S*E01`, `S01`, `S*`; `README.md:22` lists all four | LOW | open | |
-| E13 | `.claude/tech-stack.md:28` — `"src/monitorr/engine/ — window.py and grace.py"`; `:19-20` — `"Structure in README.md"` | `engine/` also contains `actions.py` and `policy.py` (both central); `README.md` has no structure section | LOW | open | |
-| E14 | `README.md:126` + `.env.example:31` — TZ `"affects grace periods"` / `"affects the grace-period calculation"` | Grace/age math is TZ-independent: `age_days` (`src/monitorr/engine/policy.py:15-21`) computes against `datetime.now(UTC)` over UTC-stored timestamps; `TZ` only changes log/display timestamp rendering | LOW-MEDIUM | open | |
+
+**No open errata as of 2026-07-02.** New drift discovered anywhere → add a row above, per the
+rules at the top of §3.
 
 ### Fixed errata
 
-None yet. Retired rows move here with `fixed <date>` status and the fixing commit in fixed-in.
+Retired rows — kept as memory per the table rules (never deleted). The "stale claim" column
+quotes what the doc **used to** say; its `file:line` anchors refer to the **pre-fix** files.
+
+| ID | Doc + stale claim (quoted, pre-fix) | Code truth (file evidence) | Severity | Status | Fixed-in |
+|---|---|---|---|---|---|
+| E1 | `.claude/architecture.md:32` — window engine does `"force to Pilot" (opt-in)`; `:73-74` decision #9 `"Force to Pilot opt-in (manual)"` … `"it's done only when the user requests it"` | Normalize-to-Pilot is **automatic**: `src/monitorr/sync.py:317` calls `actions.normalize_to_pilot` every sync for every managed show with no recorded viewing; no manual route/button in `src/monitorr/web/routes.py`; `.claude/behavior.md:138` correctly says "There is no manual action". Fixed: decision 9 rewritten as "Normalize to Pilot is automatic", component bullet updated | HIGH | fixed 2026-07-02 | `f9f3689` |
+| E2 | `.claude/architecture.md:81` (Pending decisions) — `"Editing the per-series policy (override) from the UI; today the override only enables/disables."` | Full per-series policy editing shipped in v1.4.0: `src/monitorr/web/routes.py:442` `save_series_policy`, `src/monitorr/engine/policy.py:51` `effective_policy`. Fixed: the pending-decisions bullet removed | HIGH | fixed 2026-07-02 | `f9f3689` |
+| E3 | `.claude/sonarr.md:15` — `'the **"Normalize to Pilot"** button … sets it that way via API'` | No such button exists; the manual button was removed in commit `9468870` (only automatic normalize remains). Fixed: sonarr.md now says "automatic Normalize to Pilot" | MEDIUM | fixed 2026-07-02 | `f9f3689` |
+| E4 | `CLAUDE.md` — `"v1.0.0 published on Docker Hub and GHCR"` | Version was already 1.6.1 (`pyproject.toml:3`). Fixed: `CLAUDE.md` no longer hardcodes a version; it points at `version` in `pyproject.toml` | MEDIUM | fixed 2026-07-02 | `219cd2e` |
+| E5 | `.claude/architecture.md:3-4` header — `"A runnable skeleton exists; the Plex/Sonarr/window logic is in place as a contract (signatures + TODO)"` | Fully implemented and tested since v1.0.0; zero TODO/FIXME in `src/`. Fixed: header now says the logic is fully implemented and tested | MEDIUM | fixed 2026-07-02 | `f9f3689` |
+| E6 | `README.md` env table and `.env.example` omitted `MONITORR_FULL_SYNC_INTERVAL` | Exists: `src/monitorr/config.py:30` `full_sync_interval: int = Field(default=2592000, ge=0)` (30 d; 0 disables); was documented only in `.claude/workflows.md:87`. Fixed: added to the README env table and `.env.example` | MEDIUM | fixed 2026-07-02 | `f9f3689` |
+| E7 | `README.md:124` + `.env.example:24` — `MONITORR_SYNC_ON_STARTUP`: `"Sync once on startup if it never ran"` | Since 1.5.0 it syncs on startup only when a FULL is overdue (never ran OR rolling floor elapsed): `src/monitorr/main.py` + `sync.full_sync_due()`. Fixed: README + `.env.example` now use the overdue wording, matching `.claude/workflows.md` | MEDIUM | fixed 2026-07-02 | `f9f3689` |
+| E8 | `.claude/rules.md` English-only rule vs reality | `Dockerfile` comments (e.g. line 1) AND its public OCI `description` label (`Dockerfile:19`) were Spanish; `.github/workflows/release.yml` comments/step names/messages were Spanish (e.g. line 3); `tests/conftest.py:7-8` had one Spanish comment block. `src/`, entrypoint and compose were already clean English. Fixed: English-only sweep of all three files (incl. the OCI label) | MEDIUM | fixed 2026-07-02 | `f9f3689` |
+| E9 | `CHANGELOG.md` bottom link references stopped at `[1.2.1]` | Sections exist to 1.6.1; link refs for 1.3.0–1.6.1 were missing. Fixed: refs now cover 1.0.0–1.6.1 (see §4, link convention) | LOW | fixed 2026-07-02 | `f9f3689` |
+| E10 | `README.md:96` — image published `"with tags :1, :1.0, :1.0.0 and :latest"` | metadata-action produces `:X.Y.Z`, `:X.Y`, `:X`, `:latest` per release. Fixed: README now generalizes as `:X.Y.Z`, `:X.Y`, `:X` and `:latest`, matching `.claude/workflows.md` | LOW | fixed 2026-07-02 | `f9f3689` |
+| E11 | `MONITORR_HOST` documented nowhere (README, `.env.example`, workflows.md) | Exists: `src/monitorr/config.py:18` `host: str = "0.0.0.0"`, used in `src/monitorr/main.py`. Fixed: documented in all three | LOW | fixed 2026-07-02 | `f9f3689` |
+| E12 | `.claude/behavior.md:59` Always-Have pattern list — `"S01E01 (pilot), S*E01 (first episode of each season), S* (full season)"` omitted `S01` (single whole season) | `src/monitorr/engine/policy.py:89` regex `^S(\d+|\*)(?:E(\d+|\*))?$` supports `S01E01`, `S*E01`, `S01`, `S*`; `README.md:22` lists all four. Fixed: behavior.md now lists all four | LOW | fixed 2026-07-02 | `f9f3689` |
+| E13 | `.claude/tech-stack.md:28` — `"src/monitorr/engine/ — window.py and grace.py"`; `:19-20` — `"Structure in README.md"` | `engine/` also contains `actions.py` and `policy.py` (both central); `README.md` has no structure section. Fixed: the engine/ line lists all four modules; the dangling README-structure ref removed | LOW | fixed 2026-07-02 | `f9f3689` |
+| E14 | `README.md:126` + `.env.example:31` — TZ `"affects grace periods"` / `"affects the grace-period calculation"` | Grace/age math is TZ-independent: `age_days` (`src/monitorr/engine/policy.py:15-21`) computes against `datetime.now(UTC)` over UTC-stored timestamps; `TZ` only changes log/display timestamp rendering. Fixed: README, `.env.example` and `.claude/workflows.md` now say log/display only, grace math UTC | LOW-MEDIUM | fixed 2026-07-02 | `f9f3689` |
 
 ### Corrections to earlier agent reports (do not repeat these errors)
 
@@ -146,8 +158,9 @@ The 1.6.1 Fixed entries follow the same shape; use them as further exemplars.
 
 Every `## [X.Y.Z]` section heading gets a matching link reference at the bottom of the file:
 `[X.Y.Z]: https://github.com/maxlainz/monitorr/releases/tag/vX.Y.Z`. Add the link ref **in the
-same commit** as the new release section. Known drift: refs currently stop at `[1.2.1]` while
-sections exist to 1.6.1 — erratum **E9**.
+same commit** as the new release section. Past drift: refs used to stop at `[1.2.1]` while
+sections existed to 1.6.1 — retired erratum **E9**, fixed 2026-07-02 (refs now cover every
+section, 1.0.0–1.6.1).
 
 ## 5. Skill-library maintenance rules
 
@@ -182,24 +195,27 @@ sections exist to 1.6.1 — erratum **E9**.
 
 ## Provenance and maintenance
 
-All facts verified against the repo at v1.6.1 (commit `c580f65`) on 2026-07-02. Re-verify with:
+All facts verified against the repo at v1.6.1 (commit `c580f65`) on 2026-07-02; the 14 errata
+fixes (`f9f3689`, `219cd2e`, same day) re-verified against the fixed files. The E-row commands
+below now verify that each doc **stays** fixed — any output matching the retired row's stale
+claim means the drift is BACK: reopen it as a new row in "Open errata".
 
 | Fact | Command (from repo root) |
 |---|---|
 | Doc map completeness | `ls .claude/*.md .claude/skills/` and compare with §1 + `CLAUDE.md` Context table |
 | Maintenance rules unchanged | `cat .claude/documentation.md` (§2 must still distill it faithfully) |
-| E1 (auto normalize) | `grep -n "normalize_to_pilot" src/monitorr/sync.py src/monitorr/web/routes.py` |
-| E2 (policy editing) | `grep -n "save_series_policy" src/monitorr/web/routes.py` |
-| E3 (no button) | `grep -rni "normalize" src/monitorr/web/templates/ src/monitorr/web/routes.py` |
-| E4 (version) | `sed -n '3p' pyproject.toml` vs `grep v1 CLAUDE.md` |
-| E5 (no TODOs) | `grep -rn "TODO\|FIXME" src/ \|\| echo clean` |
-| E6/E7/E11 (env drift) | `grep -n "FULL_SYNC_INTERVAL\|SYNC_ON_STARTUP\|MONITORR_HOST\|host" README.md .env.example src/monitorr/config.py` |
-| E8 (Spanish) | `grep -n "instala\|imagen\|Publica\|Monitoriza" Dockerfile .github/workflows/release.yml; sed -n '7,8p' tests/conftest.py` |
-| E9 (changelog links) | `grep -n "^\[1\." CHANGELOG.md` vs `grep -n "^## \[" CHANGELOG.md` |
-| E10 (image tags) | `grep -n ":1.0.0" README.md; grep -n "type=semver" .github/workflows/release.yml` |
-| E12 (pattern list) | `grep -n "S\*E01" .claude/behavior.md README.md; grep -n '\^S' src/monitorr/engine/policy.py` |
-| E13 (engine layout) | `ls src/monitorr/engine/; grep -n "window.py" .claude/tech-stack.md` |
-| E14 (TZ vs grace math) | `grep -n -i "grace" README.md .env.example; grep -n "datetime.now(UTC)" src/monitorr/engine/policy.py` |
+| E1 fix holds (auto normalize, docs agree) | `grep -n "normalize_to_pilot" src/monitorr/sync.py src/monitorr/web/routes.py; grep -n -i "automatic" .claude/architecture.md` (architecture.md must describe normalize as automatic) |
+| E2 fix holds (policy editing shipped, not "pending") | `grep -n "save_series_policy" src/monitorr/web/routes.py; grep -n -A4 "Pending decisions" .claude/architecture.md` (no per-series-policy-editing bullet) |
+| E3 fix holds (no button, sonarr.md says automatic) | `grep -rni "normalize" src/monitorr/web/templates/ src/monitorr/web/routes.py .claude/sonarr.md` (no "button"; sonarr.md says "automatic Normalize to Pilot") |
+| E4 fix holds (no hardcoded version in CLAUDE.md) | `sed -n '3p' pyproject.toml; grep -n "pyproject" CLAUDE.md` (CLAUDE.md points at pyproject's `version`, no `vX.Y.Z` literal) |
+| E5 fix holds (no TODOs; header says implemented) | `grep -rn "TODO\|FIXME" src/ \|\| echo clean; sed -n '3,4p' .claude/architecture.md` (header says fully implemented and tested) |
+| E6/E7/E11 fixes hold (env vars documented) | `grep -n "FULL_SYNC_INTERVAL\|SYNC_ON_STARTUP\|MONITORR_HOST" README.md .env.example .claude/workflows.md src/monitorr/config.py` (all three vars present in README + .env.example; SYNC_ON_STARTUP worded as "full overdue") |
+| E8 fix holds (English-only) | `grep -n "instala\|imagen\|Publica\|Monitoriza" Dockerfile .github/workflows/release.yml tests/conftest.py \|\| echo clean` (expect NO matches — clean) |
+| E9 fix holds (changelog links complete) | `grep -c "^\[1\." CHANGELOG.md` vs `grep -c "^## \[" CHANGELOG.md` (counts must match, one ref per section) |
+| E10 fix holds (generalized image tags) | `grep -n ":X.Y.Z" README.md; grep -n "type=semver" .github/workflows/release.yml` (README uses `:X.Y.Z`/`:X.Y`/`:X`/`:latest`, no frozen `:1.0.0`) |
+| E12 fix holds (pattern list complete) | `grep -n "S\*E01" .claude/behavior.md README.md; grep -n '\^S' src/monitorr/engine/policy.py` (behavior.md lists all four incl. `S01`) |
+| E13 fix holds (engine layout) | `ls src/monitorr/engine/; grep -n "policy.py\|actions.py" .claude/tech-stack.md` (tech-stack.md lists window/grace/policy/actions; no "Structure in README.md" ref) |
+| E14 fix holds (TZ wording) | `grep -n -i "grace" README.md .env.example .claude/workflows.md; grep -n "datetime.now(UTC)" src/monitorr/engine/policy.py` (TZ lines say log/display only, grace math UTC) |
 | Changelog exemplar intact | `sed -n '71,90p' CHANGELOG.md` (1.5.1 section) |
 | Remote tags exist | `git ls-remote --tags origin` (fetch with `git fetch origin --tags`) |
 | Skill frontmatter = dir name | `for d in .claude/skills/*/; do echo "$d"; head -2 "$d/SKILL.md"; done` |
