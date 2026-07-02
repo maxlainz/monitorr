@@ -1,13 +1,13 @@
 ---
 name: monitorr-config-and-flags
 description: >-
-  Owner of monitorr's complete configuration surface: every MONITORR_* env var (defaults, ge
-  validation, restart-required lru_cache), all 11 Policy fields, dry-run / watched-threshold /
-  user-filter, every SQLite setting-table key (writer/reader/reset rules), per-series overrides,
-  web-form clamping (_opt_int, threshold clamp), PUID/PGID/TZ. Use when adding, changing, or
-  looking up any setting, default, flag, or "where is X configured / why didn't my env var take
-  effect". NOT for what the window/grace policy DOES -> monitorr-window-engine-reference; NOT for
-  running/deploying -> monitorr-run-and-operate.
+  Owner of the complete configuration surface: every MONITORR_* env var (defaults, validation,
+  restart-required lru_cache), all 11 Policy fields, dry-run / watched-threshold /
+  user-filter, every SQLite setting-table key, per-series overrides, web-form clamping,
+  PUID/PGID/TZ. Use to add, change, or look up any setting, default, flag, or "where
+  is X configured / why didn't my env var take effect". NOT for what the window/grace policy
+  DOES -> monitorr-window-engine-reference; NOT for running/deploying ->
+  monitorr-run-and-operate; NOT for editing docs/README text -> monitorr-docs-and-writing.
 ---
 
 # monitorr configuration and flags

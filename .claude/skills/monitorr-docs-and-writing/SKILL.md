@@ -87,12 +87,13 @@ All quotes and file evidence below re-verified against the repo on 2026-07-02 (v
 | E5 | `.claude/architecture.md:3-4` header — `"A runnable skeleton exists; the Plex/Sonarr/window logic is in place as a contract (signatures + TODO)"` | Fully implemented and tested since v1.0.0; zero TODO/FIXME in `src/` | MEDIUM | open | |
 | E6 | `README.md` env table and `.env.example` omit `MONITORR_FULL_SYNC_INTERVAL` | Exists: `src/monitorr/config.py:30` `full_sync_interval: int = Field(default=2592000, ge=0)` (30 d; 0 disables); documented in `.claude/workflows.md:87` | MEDIUM | open | |
 | E7 | `README.md:124` + `.env.example:24` — `MONITORR_SYNC_ON_STARTUP`: `"Sync once on startup if it never ran"` | Since 1.5.0 it syncs on startup only when a FULL is overdue (never ran OR rolling floor elapsed): `src/monitorr/main.py` + `sync.full_sync_due()`; `.claude/workflows.md:88` has the correct wording | MEDIUM | open | |
-| E8 | `.claude/rules.md` English-only rule vs reality | `Dockerfile` comments (e.g. line 1) AND its public OCI `description` label (`Dockerfile:19`) are Spanish; `.github/workflows/release.yml` comments/step names/messages are Spanish (e.g. line 3). `src/`, `tests/`, entrypoint and compose are clean English | MEDIUM | open | |
+| E8 | `.claude/rules.md` English-only rule vs reality | `Dockerfile` comments (e.g. line 1) AND its public OCI `description` label (`Dockerfile:19`) are Spanish; `.github/workflows/release.yml` comments/step names/messages are Spanish (e.g. line 3); `tests/conftest.py:7-8` has one Spanish comment block. `src/`, entrypoint and compose are clean English | MEDIUM | open | |
 | E9 | `CHANGELOG.md` bottom link references stop at `[1.2.1]` | Sections exist to 1.6.1; link refs for 1.3.0–1.6.1 are missing (see §4, link convention) | LOW | open | |
 | E10 | `README.md:96` — image published `"with tags :1, :1.0, :1.0.0 and :latest"` | metadata-action produces `:1.6.1`, `:1.6`, `:1`, `:latest` for the current release; `.claude/workflows.md` generalizes correctly as `:X.Y.Z`/`:X.Y`/`:X` | LOW | open | |
 | E11 | `MONITORR_HOST` documented nowhere (README, `.env.example`, workflows.md) | Exists: `src/monitorr/config.py:18` `host: str = "0.0.0.0"`, used in `src/monitorr/main.py` | LOW | open | |
 | E12 | `.claude/behavior.md:59` Always-Have pattern list — `"S01E01 (pilot), S*E01 (first episode of each season), S* (full season)"` omits `S01` (single whole season) | `src/monitorr/engine/policy.py:89` regex `^S(\d+|\*)(?:E(\d+|\*))?$` supports `S01E01`, `S*E01`, `S01`, `S*`; `README.md:22` lists all four | LOW | open | |
 | E13 | `.claude/tech-stack.md:28` — `"src/monitorr/engine/ — window.py and grace.py"`; `:19-20` — `"Structure in README.md"` | `engine/` also contains `actions.py` and `policy.py` (both central); `README.md` has no structure section | LOW | open | |
+| E14 | `README.md:126` + `.env.example:31` — TZ `"affects grace periods"` / `"affects the grace-period calculation"` | Grace/age math is TZ-independent: `age_days` (`src/monitorr/engine/policy.py:15-21`) computes against `datetime.now(UTC)` over UTC-stored timestamps; `TZ` only changes log/display timestamp rendering | LOW-MEDIUM | open | |
 
 ### Fixed errata
 
@@ -193,11 +194,12 @@ All facts verified against the repo at v1.6.1 (commit `c580f65`) on 2026-07-02. 
 | E4 (version) | `sed -n '3p' pyproject.toml` vs `grep v1 CLAUDE.md` |
 | E5 (no TODOs) | `grep -rn "TODO\|FIXME" src/ \|\| echo clean` |
 | E6/E7/E11 (env drift) | `grep -n "FULL_SYNC_INTERVAL\|SYNC_ON_STARTUP\|MONITORR_HOST\|host" README.md .env.example src/monitorr/config.py` |
-| E8 (Spanish) | `grep -n "instala\|imagen\|Publica\|Monitoriza" Dockerfile .github/workflows/release.yml` |
+| E8 (Spanish) | `grep -n "instala\|imagen\|Publica\|Monitoriza" Dockerfile .github/workflows/release.yml; sed -n '7,8p' tests/conftest.py` |
 | E9 (changelog links) | `grep -n "^\[1\." CHANGELOG.md` vs `grep -n "^## \[" CHANGELOG.md` |
 | E10 (image tags) | `grep -n ":1.0.0" README.md; grep -n "type=semver" .github/workflows/release.yml` |
 | E12 (pattern list) | `grep -n "S\*E01" .claude/behavior.md README.md; grep -n '\^S' src/monitorr/engine/policy.py` |
 | E13 (engine layout) | `ls src/monitorr/engine/; grep -n "window.py" .claude/tech-stack.md` |
+| E14 (TZ vs grace math) | `grep -n -i "grace" README.md .env.example; grep -n "datetime.now(UTC)" src/monitorr/engine/policy.py` |
 | Changelog exemplar intact | `sed -n '71,90p' CHANGELOG.md` (1.5.1 section) |
 | Remote tags exist | `git ls-remote --tags origin` (fetch with `git fetch origin --tags`) |
 | Skill frontmatter = dir name | `for d in .claude/skills/*/; do echo "$d"; head -2 "$d/SKILL.md"; done` |

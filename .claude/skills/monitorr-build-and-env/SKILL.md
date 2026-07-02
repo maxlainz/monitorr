@@ -43,15 +43,11 @@ If you bump Python, all six rows above must move together.
 
 ## 2. Quality gates — the pre-push command
 
-CI runs exactly these four gates, in this order (`.github/workflows/ci.yml`, `quality` job,
-after `uv sync --frozen`). Run the same single line locally before every push:
-
-```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest
-```
-
-Expect all four to pass silently/green. If `ruff format --check` fails, fix with
-`uv run ruff format .` (never hand-format). All tool config lives in `pyproject.toml`:
+CI runs four gates (ruff lint, format check, mypy, pytest) after `uv sync --frozen`
+(`.github/workflows/ci.yml`, `quality` job). Before every push, run the pre-push gate — the
+exact command line and CI order live in `monitorr-validation-and-qa` §2, which mirrors ci.yml.
+Expect all four to pass green. If the format gate fails, fix with `uv run ruff format .`
+(never hand-format). All tool config lives in `pyproject.toml`:
 
 | Tool | Config (pyproject.toml) | Meaning |
 |---|---|---|
@@ -159,16 +155,9 @@ changelog) is owned by monitorr-change-control — this skill only owns the buil
 - [ ] **`ruff format` is the formatting source of truth.** CI enforces
   `ruff format --check .`; no black/isort configs exist. Never hand-align code — run
   `uv run ruff format .` and accept its output.
-- [ ] **mypy strict covers `tests/` too** (`files = ["src", "tests"]`). Test helpers and
-  fixtures must be fully typed (e.g. `AsyncIterator[None]` return on async fixtures) — an
-  untyped quick test WILL fail CI.
-- [ ] **Async fixtures use `@pytest_asyncio.fixture`** — the repo convention
-  (`tests/conftest.py:15`, the autouse `fresh_db` fixture); follow it for new async fixtures
-  even though `asyncio_mode = "auto"` is set. Test-writing detail: monitorr-validation-and-qa.
-- [ ] **Targeted `# noqa` spots exist in tests** — `tests/conftest.py` uses `# noqa: E402`
-  (imports after the `MONITORR_CONFIG_DIR` env var is set, deliberately) and
-  `tests/test_sync.py` has one `# noqa: E501` on a long test name. Do not "fix" these; do not
-  add blanket ignores either.
+- [ ] **mypy strict covers `tests/` too** (`files = ["src", "tests"]`), and the suite has three
+  deliberate targeted `# noqa` suppressions — test-writing conventions and the noqa inventory
+  live in `monitorr-validation-and-qa` §6; do not "fix" those spots or add blanket ignores.
 - [ ] **Packaging is hatchling with src-layout**: `[tool.hatch.build.targets.wheel]
   packages = ["src/monitorr"]`, console script `monitorr = "monitorr.main:run"`. New
   top-level packages must live under `src/monitorr/` or they won't ship in the wheel/image.
@@ -202,4 +191,4 @@ Verified against the repo at v1.6.1 on 2026-07-02. Re-verify any fact before rel
 | Build-sha flow | `grep -n 'MONITORR_BUILD' Dockerfile && grep -n 'build_sha\|build_date' src/monitorr/config.py src/monitorr/main.py` |
 | CI triggers/jobs | `sed -n '1,15p' .github/workflows/ci.yml` |
 | noqa spots | `grep -rn 'noqa' tests/ src/` |
-| Test count (108 as of v1.6.1) | `uv run pytest --collect-only -q \| tail -1` or `grep -rc 'def test' tests/*.py` |
+| Test count (108 as of v1.6.1) | `grep -rEc "^(async )?def test_" tests/*.py \| awk -F: '{s+=$2} END {print s}'` |

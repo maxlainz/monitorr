@@ -48,7 +48,9 @@ for r in sqlite3.connect('file:/config/monitorr.db?mode=ro', uri=True).execute(
 curl -s http://localhost:8080/health     # {"status":"ok"}
 curl -s http://localhost:8080/version    # {"version":..., "build_sha":..., "build_date":...}
 
-# Sonarr's view (URL/key from the setting table, keys sonarr_url / sonarr_api_key):
+# Sonarr's view. One-time setup — read URL/key from the setting table:
+SONARR_URL=$(sqlite3 "file:./config/monitorr.db?mode=ro" "SELECT value FROM setting WHERE key='sonarr_url';")
+KEY=$(sqlite3 "file:./config/monitorr.db?mode=ro" "SELECT value FROM setting WHERE key='sonarr_api_key';")
 curl -s -H "X-Api-Key: $KEY" "$SONARR_URL/api/v3/series"                    # find tvdbId/id
 curl -s -H "X-Api-Key: $KEY" "$SONARR_URL/api/v3/episode?seriesId=<id>"     # episode list
 curl -s -H "X-Api-Key: $KEY" "$SONARR_URL/api/v3/queue?pageSize=1000"       # download queue
@@ -57,7 +59,9 @@ curl -s -H "X-Api-Key: $KEY" "$SONARR_URL/api/v3/queue?pageSize=1000"       # do
 `tvdb_id` is the cross-system show key. Find it in the UI at `/series` (each row links to
 `/series/{tvdb_id}`) or as `tvdbId` in Sonarr's `/api/v3/series` response.
 
-For richer prebuilt state dumps and invariant checks, see `monitorr-diagnostics-and-tooling`.
+For richer prebuilt state dumps and invariant checks, see `monitorr-diagnostics-and-tooling` —
+it also owns the complete verified log-format inventory; the runbooks below quote only the
+strings they grep for.
 
 ## Symptom index
 

@@ -1,13 +1,13 @@
 ---
 name: monitorr-research-frontier
 description: >-
-  The provable-correctness research frontier: candidate verification work (Hypothesis property
-  tests, Plex/Sonarr divergence simulator, anchor state-machine proof, sync state-space
-  enumeration, mutation testing) plus external positioning — and the CLAIMS-EVIDENCE RULE (no
-  public capability claim without a named in-repo test). Use when planning new correctness work,
-  writing README/release-note/positioning claims, or comparing monitorr to other *arr tools. NOT
-  for running/writing today's tests → monitorr-validation-and-qa; NOT for the evidence bar of a
-  live investigation → monitorr-research-methodology.
+  The provable-correctness frontier: candidate verification work (Hypothesis property tests,
+  Plex/Sonarr divergence simulator, anchor state-machine proof, sync state-space enumeration,
+  mutation testing), external positioning, and the CLAIMS-EVIDENCE RULE (no public claim
+  without a named in-repo test). Use when planning correctness work — incl. writing a NEW
+  property-based test — or writing README/release-note/positioning claims. NOT for
+  writing/running conventional example-based tests → monitorr-validation-and-qa; NOT for a live
+  investigation's evidence bar → monitorr-research-methodology.
 ---
 
 # monitorr research frontier
@@ -25,7 +25,7 @@ drives Sonarr over its API.)
 "State of the art" (SOTA) here means two things, and every item below must beat both:
 
 1. **This repo's current test suite**: 108 example-based tests as of v1.6.1, 2026-07-02
-   (count: `grep -c "def test_" tests/*.py | awk -F: '{s+=$2} END {print s}'`), HTTP faked with
+   (count: `grep -rEc "^(async )?def test_" tests/*.py | awk -F: '{s+=$2} END {print s}'`), HTTP faked with
    respx, mypy strict over `src` and `tests`. Excellent regression coverage of *known* failures.
 2. **The *arr ecosystem's typical practice**: example-based tests that replay known bugs. No
    mainstream *arr companion property-tests its deletion logic or simulates source divergence.
@@ -311,8 +311,8 @@ layout; switch tools rather than restructuring the package.
 that trim watched media) position on feature lists; none points at machine-checked reliability
 guarantees. monitorr's differentiator per the maintainer is reliability — but an *asserted*
 reliability advantage without evidence is indistinguishable from marketing, and this repo's own
-history (13 releases, 8 of them fixing self-inflicted re-download/over-delete bugs) demands
-humility. Positioning claims are allowed ONLY under the claims-evidence rule above.
+history (13 releases; 6 of them fixed the 8 self-inflicted re-download/over-delete incidents)
+demands humility. Positioning claims are allowed ONLY under the claims-evidence rule above.
 
 **Repo asset.** The README already makes testable claims with real backing (the worked example
 above), the test suite has stable, citable test names, and the changelog's cause→mechanism→fix
@@ -374,7 +374,7 @@ the listed command from the repo root before relying on it.
 | Fact stated above | Re-verify with |
 |---|---|
 | No property/mutation tooling installed yet | `grep -iE "hypothesis|mutmut|cosmic" pyproject.toml uv.lock` (expect no matches) |
-| 108 tests (example-based only) | `grep -c "def test_" tests/*.py \| awk -F: '{s+=$2} END {print s}'` |
+| 108 tests (example-based only) | `grep -rEc "^(async )?def test_" tests/*.py \| awk -F: '{s+=$2} END {print s}'` |
 | Pure decision-core signatures (window.py:53-83) | `grep -n "def _select_ahead\|def _should_delete_behind\|def keep_protected_keys\|def _real_episodes" src/monitorr/engine/window.py` |
 | Anchor-floor backing tests still exist under these names | `grep -n "test_anchor_floored_at_persisted_furthest_watch\|test_incremental_sync_does_not_regress_below_recorded_max\|test_anchor_floor_clamps" tests/test_window.py tests/test_sync.py` |
 | Four anchor paths and their locations | `grep -rn "apply_window\|keep_protected_keys" src/monitorr/plex/poller.py src/monitorr/sync.py src/monitorr/engine/grace.py` |

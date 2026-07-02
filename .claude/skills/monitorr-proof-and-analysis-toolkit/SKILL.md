@@ -96,7 +96,7 @@ Persisted watch: `(1, 5)` recorded now. Trigger: `apply_window(TVDB, season=1, e
 | 12 | dry-run ON → deletions recorded as previews |
 
 Predicted pending previews: `{(1,1), (1,2), (1,3), (1,4)}`. The test asserts exactly this set —
-and its docstring confirms the counterfactual: an un-floored anchor E2 would instead have kept
+and an inline comment in the test confirms the counterfactual: an un-floored anchor E2 would instead have kept
 E1+E5 and trimmed E4/E5 as `ahead` (the 1.5.1 regression shape, Recipe 4).
 
 ## Recipe 2 — Predict-then-verify for any engine change
@@ -149,7 +149,8 @@ what it did, from its logs alone.
 `INFO`) and restart. The window's two decision lines are DEBUG-only; the sync's per-show anchor
 line is INFO, so it is visible even without DEBUG.
 
-**The exact lines** (verified in code; `%`-style formats quoted verbatim):
+**The lines these steps grep for** (verified in code; `%`-style formats quoted verbatim — the
+complete verified log-format inventory is owned by `monitorr-diagnostics-and-tooling`):
 
 | Level | Source | Format |
 |---|---|---|
@@ -158,8 +159,6 @@ line is INFO, so it is visible even without DEBUG.
 | INFO | `window.py` (gated) | `GET window not armed for tvdb=%s (inactive past dormant/unwatched grace)` |
 | DEBUG | `window.py` (pre-write) | `apply_window tvdb=%s anchor=S%02dE%02d idx=%d get=%d%s keep=%d%s dry_run=%s ahead=%s search_ahead=%s` |
 | DEBUG | `window.py` (post-write) | `apply_window tvdb=%s unmonitor=%d in_window=%d queued=%d surplus=%s` |
-| DEBUG | `sync.py` | `normalize tvdb=%s (%s) to pilot-only` |
-| INFO | `sync.py` (cycle end) | `sync completed (%s): %s` (mode + summary dict) |
 | INFO | `actions.py` (dry-run) | `[dry-run] would monitor/unmonitor/search %d episodes`, `[dry-run] would delete S%02dE%02d (%s)`, `[dry-run] would cancel queued downloads of %d episodes`, `[dry-run] would set monitored seasons on=%s off=%s` |
 | INFO | `actions.py` (real) | `deleted S%02dE%02d (%s)`, `queued download cancelled (episodeId=%s); still seeding` |
 
@@ -206,38 +205,14 @@ regression (fix `e572eff` → v1.5.1).
 5. **Check the fix targets the mechanism**, not a symptom — and that it explains why the fix
    ends the loop everywhere, not just on the observed path.
 
-**Worked example — the 1.5.1 anchor regression** (symptoms from `CHANGELOG.md` [1.5.1] and
-`git show e572eff`, read-only):
-
-Observations:
-- O1: a fully-watched series re-downloaded already-watched back-catalog.
-- O2: it advanced N (= get_count) episodes PER sync cycle — steady creep, not one bad jump.
-- O3: it appeared only after v1.5.0 (which introduced incremental sync, commit `c315cda`).
-- O4 (negative): shows whose watched files were still on disk were unaffected.
-- O5 (negative): shows whose plays were newer than the watermark were unaffected.
-
-Candidate mechanisms: (a) Sonarr re-monitoring on its own (season cascade); (b) grace/normalize
-re-arming downloads; (c) watermark arithmetic skipping plays; (d) the anchor being derived only
-from the cycle's LIVE Plex read (allLeaves + history delta), ignoring the persisted store.
-
-Elimination: (a) fails O3 (cascades predate 1.5.0) and O2 (no per-cycle creep shape). (b) fails
-O1 (grace deletes, it does not search back-catalog). (c) alone fails O4 (a skipped play would
-not matter while the file is still in allLeaves). Only (d) explains all five: an episode whose
-file was trimmed AND whose play predates the watermark is invisible to BOTH live sources, so the
-anchor falls back to the furthest on-disk watch — which is precisely why O4 and O5 are negative
-(either source alone still sees the watch).
-
-The amplifier (step 4): each wrong re-download re-enters allLeaves; the next cycle's live read
-now sees it as the furthest on-disk watch, so the anchor advances get_count episodes and the
-window re-downloads the next batch — the creep of O2 is the loop's step size. This is the repo's
-meta-pattern: anchors derived from volatile state self-amplify.
-
-The fix (step 5, `e572eff`): floor the anchor at the persisted furthest watch, clamped to
-episodes Sonarr lists, enforced INSIDE `apply_window` so every caller (sync, poller, webhook) is
-protected — mechanism-level, not path-level. Migration 4 (`src/monitorr/db.py`, the
-`DELETE FROM setting WHERE key = 'last_full_sync';` entry) forces one full sync to repair the
-damage the loop already did. Pinning tests: the three `anchor_floor` tests in
-`tests/test_window.py` (Recipe 1's worked example is the main one).
+**Worked application** — the 1.5.1 anchor regression (fix `e572eff` → v1.5.1), in brief: after
+v1.5.0's incremental sync (`c315cda`) began deriving the anchor only from the cycle's LIVE Plex
+read, a fully-watched series re-downloaded its own back-catalog, `get_count` episodes per sync
+cycle; the fix floors the anchor at the persisted furthest watch INSIDE `apply_window` (pinned
+by the three `anchor_floor` tests in `tests/test_window.py` — Recipe 1's worked example is the
+main one). The full application of these five steps — the observations table, the rival
+mechanisms, and their refutations — is the worked example in `monitorr-research-methodology` §1;
+the incident facts are `monitorr-failure-archaeology` INC-06.
 
 ## Recipe 5 — Invariant-checking a live/stopped instance
 

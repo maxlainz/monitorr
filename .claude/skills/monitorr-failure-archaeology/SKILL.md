@@ -84,9 +84,11 @@ written cause → mechanism → fix by rule; see monitorr-change-control).
   window only, independent of file retention, so kept/watched episodes are unmonitored WHILE
   keeping their files and a season of merely-kept episodes never reaches all-monitored. Lives in
   `src/monitorr/engine/window.py:251-261` (the unmonitor batch and its comment). The invariant
-  was refined in v1.6.0 (4d71409) to `monitored ≡ GET window ∪ Always-Have`
-  (`window.py:214`) so Sonarr can still upgrade Always-Have episodes. Invariant text and why:
-  monitorr-architecture-contract.
+  was refined in v1.6.0 (4d71409) so Always-Have episodes stay monitored — that release's
+  historical form was `monitored ≡ GET window ∪ Always-Have`; the armed gate was added later
+  (c72357d, INC-08), so today's canonical form is
+  `monitored ≡ (GET window if armed else ∅) ∪ Always-Have` (`window.py:214`,
+  monitorr-window-engine-reference). Invariant text and why: monitorr-architecture-contract.
 - **Regression tests**: the original test (`test_unmonitors_watched_kept_episodes_without_deleting`)
   was renamed by 4d71409; current locks are
   `test_always_have_keeps_every_episode_monitored_without_deleting` (`tests/test_window.py:230`)
@@ -180,8 +182,9 @@ written cause → mechanism → fix by rule; see monitorr-change-control).
 - **The fix**: `apply_window` FLOORS the anchor at the furthest episode ever recorded as watched
   in the persisted store (`episode_watch`), clamped to episodes Sonarr lists, enforced INSIDE
   the window so every caller (sync, poller, webhook) is protected
-  (`src/monitorr/engine/window.py:121-142`). A one-time migration (index 4, schema version 4)
-  drops `last_full_sync` to force one full reconciliation after upgrading
+  (`src/monitorr/engine/window.py:121-142`). A one-time migration (migration 4 of 4 — list
+  index 3 in `MIGRATIONS`, schema version 4) drops `last_full_sync` to force one full
+  reconciliation after upgrading
   (`src/monitorr/db.py:54-58`). Canonical floor formula: monitorr-window-engine-reference.
 - **Regression tests**: `test_anchor_floored_at_persisted_furthest_watch`
   (`tests/test_window.py:578`), `test_anchor_floor_clamps_to_episode_sonarr_lists`
@@ -401,7 +404,7 @@ routed through `engine/actions.py`, and treat any change that adds a write path 
 an incident waiting to happen. The riskiest default in the system is `grace_completed_days=30`
 ENABLED — harmless under dry-run, a 30-day purge timer without it (see monitorr-config-and-flags).
 
-## Erratum on record: the manual "Normalize to Pilot" button (add-then-remove)
+## History: the manual "Normalize to Pilot" button (added, then removed)
 
 Normalize to Pilot = reset a show with no recorded viewing to its pilot-anchored state. A manual
 UI button for it existed briefly in the MVP era (introduced around f59a4e5/961a500, 2026-05-29 —
@@ -410,10 +413,9 @@ UI button for it existed briefly in the MVP era (introduced around f59a4e5/961a5
 normalization AUTOMATIC on every sync. Today there is no manual route or button
 (`grep -n normalize src/monitorr/web/routes.py` finds only the `auto_normalize` policy flag);
 the automatic path is `actions.normalize_to_pilot` (`src/monitorr/engine/actions.py:92`) called
-from the sync. Therefore `.claude/architecture.md` (decision #9, "manual/opt-in") and
-`.claude/sonarr.md` (the "'Normalize to Pilot' button") are STALE — they describe the pre-9468870
-design. The standing-errata table is owned by monitorr-docs-and-writing; do not "fix" code to
-match those docs.
+from the sync. `.claude/architecture.md` and `.claude/sonarr.md` are stale here — errata E1/E3
+in `monitorr-docs-and-writing`; the retirement rationale is the ledger exemplar in
+`monitorr-research-methodology` §4.
 
 ## When NOT to use this skill
 

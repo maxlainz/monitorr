@@ -33,8 +33,8 @@ watched content re-downloaded**, always caused by deriving the anchor from VOLAT
 (on-disk `allLeaves`, a current `ratingKey`, a pre-cascade Sonarr snapshot) instead of the
 persisted monotonic watch store. The loop is SELF-AMPLIFYING: each wrong re-download re-enters
 `allLeaves` and re-advances the anchor, so the bug hides its own cause. The invariant had to be
-re-asserted on four separate paths before it held (history 4245d21 → 5ce7fab, sync e572eff,
-grace sweep 9a189ef). Invariants 1 and 2 below are the codification; treat them as one rule seen
+re-asserted on four separate paths before it held (live 351bc8a, history 4245d21 → 5ce7fab,
+sync e572eff, grace sweep 9a189ef). Invariants 1 and 2 below are the codification; treat them as one rule seen
 from two sides.
 
 ## Change-control gate (applies to every invariant)

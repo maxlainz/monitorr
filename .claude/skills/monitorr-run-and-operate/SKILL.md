@@ -3,8 +3,8 @@ name: monitorr-run-and-operate
 description: >-
   Run and operate monitorr: local dev run (uv run monitorr, MONITORR_CONFIG_DIR), docker run /
   docker compose, the /config volume, PUID/PGID permission remap, the first-run setup sequence
-  (link Plex, choose server, Sonarr, policy, webhook, disabling dry-run), the background loops and
-  what each interval env var controls, /health, /version, dashboard, deletions page, "Sync now",
+  (link Plex, choose server, Sonarr, policy, webhook, disabling dry-run), the background loops
+  and interval env vars, /health, /version, dashboard, deletions page, "Sync now",
   log levels, TZ, backups before upgrades. NOT for building images/CI/toolchain → use
   monitorr-build-and-env; something is broken → monitorr-debugging-playbook; the full env-var and
   Policy reference → monitorr-config-and-flags.
@@ -165,19 +165,15 @@ final step — safe to do in any order, but this order avoids surprises:
 | Periodic sync loop (`_sync_loop`) | only if `sync_interval > 0` | `MONITORR_SYNC_INTERVAL` (21600 s; 0 disables) |
 | One-shot startup sync | only if `sync_on_startup` AND `sync.full_sync_due()` | `MONITORR_SYNC_ON_STARTUP` (true) |
 
-What each interval means (full reference: `monitorr-config-and-flags`):
+What each interval means, one line each (defaults and validation: `monitorr-config-and-flags`):
 
-- `MONITORR_PLEX_POLL_INTERVAL` — seconds the poller sleeps between reads of the PMS active
-  sessions; this is the live watched-episode detector. Lower = faster reaction, more Plex load.
-- `MONITORR_GRACE_SWEEP_INTERVAL` — seconds between grace-period sweeps, which apply expired
-  deferred deletions. Deletions therefore land up to one interval after their deadline.
-- `MONITORR_SYNC_INTERVAL` — seconds between periodic watch-history syncs (normally incremental);
-  `0` disables the loop entirely. Manual "Sync now" still works with it disabled.
-- `MONITORR_FULL_SYNC_INTERVAL` — rolling floor in seconds since the last FULL sync that promotes
-  the next sync to full (default 2592000 = 30 days; `0` disables the floor).
-- `MONITORR_SYNC_ON_STARTUP` — at boot, run one sync only when a FULL is overdue (never ran, or
-  the rolling floor elapsed while the app was down). A normal restart with a fresh full sync on
-  record starts NOTHING extra. (README's older wording "if it never ran" is stale — see
+- `MONITORR_PLEX_POLL_INTERVAL` — poll cadence of the live watched-episode detector.
+- `MONITORR_GRACE_SWEEP_INTERVAL` — grace-sweep cadence; deletions land up to one interval late.
+- `MONITORR_SYNC_INTERVAL` — periodic-sync cadence; `0` = the loop is never created
+  (manual "Sync now" still works).
+- `MONITORR_FULL_SYNC_INTERVAL` — rolling full-sync floor; `0` disables it.
+- `MONITORR_SYNC_ON_STARTUP` — boot-time sync only when a FULL is overdue (never ran, or the
+  rolling floor elapsed while down). (README's older wording "if it never ran" is stale — see
   `monitorr-docs-and-writing`.)
 
 Interval validators fail fast at startup (`ge=1` / `ge=0` in `config.py`) because a zero/negative
@@ -231,9 +227,9 @@ tasks are cancelled cleanly on shutdown.
   effect is LOG TIMESTAMP display (Python logging's `%(asctime)s` uses local time).
 - Grace-period day math itself is TZ-independent in code: `age_days` in
   `src/monitorr/engine/policy.py` computes elapsed seconds against `datetime.now(UTC)` over
-  UTC-stored timestamps, i.e. continuous fractional days, not calendar days. (README and
-  `.env.example` say TZ "affects grace periods" — that is stale relative to the code; see
-  `monitorr-docs-and-writing`.)
+  UTC-stored timestamps, i.e. continuous fractional days, not calendar days. (README.md:126 and
+  `.env.example` tie TZ to the grace-period calculation — stale relative to the code; errata
+  row E14 in `monitorr-docs-and-writing`.)
 - The rolling full-sync floor and the history watermark are likewise UTC-based; host clock skew,
   not TZ, is what would distort them.
 

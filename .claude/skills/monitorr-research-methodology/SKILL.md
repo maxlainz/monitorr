@@ -1,15 +1,13 @@
 ---
 name: monitorr-research-methodology
 description: >-
-  HOW to investigate and decide in this repo: the evidence bar (one mechanism must explain ALL
-  observations including the negatives, and survive adversarial refutation), the
-  predict-numbers-before-running worksheet, and the idea lifecycle (spark → falsifiable question
-  → evidence → adopt or documented retirement; no zombie ideas). Owns the Retired-ideas ledger.
-  Use when diagnosing a bug's root cause, evaluating a design idea, or deciding whether a
-  hypothesis is proven. NOT for symptom-driven runbooks → monitorr-debugging-playbook; NOT for
-  engine-specific prediction recipes → monitorr-proof-and-analysis-toolkit; NOT for the frontier
-  item list → monitorr-research-frontier; NOT for full incident stories →
-  monitorr-failure-archaeology.
+  HOW to investigate and decide: the evidence bar (one mechanism must explain ALL observations
+  incl. negatives and survive adversarial refutation), the predict-numbers-before-running
+  worksheet, the idea lifecycle (adopt or documented retirement; no zombie ideas). Owns the
+  Retired-ideas ledger. Use for root-cause diagnosis, design evaluation, or deciding if a
+  hypothesis is proven. NOT for: symptom runbooks → monitorr-debugging-playbook; engine
+  prediction recipes → monitorr-proof-and-analysis-toolkit; frontier items →
+  monitorr-research-frontier; incident stories → monitorr-failure-archaeology.
 ---
 
 # monitorr research methodology
@@ -70,14 +68,16 @@ watch and the window slid backward.
 |---|---|
 | POSITIVE: exactly N episodes re-downloaded per cycle | Yes — the slid-back anchor makes the window math request `GET = get_count` episodes ahead of the wrong point, once per sync |
 | POSITIVE: the loop is self-amplifying | Yes — each wrongly re-downloaded episode re-enters allLeaves, re-advancing the live-derived anchor, so the next cycle marches on |
-| NEGATIVE: full syncs were unaffected | Yes — a full sync reads the ENTIRE play history (`since=None` in `src/monitorr/sync.py`), so pre-watermark plays are visible and the sweep repopulates the persisted store; the anchor computes correctly that cycle |
+| NEGATIVE (implied by the mechanism; not independently recorded): a full-sync cycle anchors correctly — but the regression resumes on the next incremental cycle | Yes — a full sync reads the ENTIRE play history (`since=None` in `src/monitorr/sync.py`), so pre-watermark plays are visible and the sweep repopulates the persisted store; the anchor computes correctly that cycle. The regression resumes afterwards because the incremental derivation itself ignores the store |
 | NEGATIVE: only shows with BOTH a trimmed file AND a pre-watermark play hit it | Yes — file still on disk → allLeaves carries the watch and anchors correctly; play newer than the watermark → the incremental history delta carries it. Either source alone is enough; only the intersection of the two blind spots fails |
 
 The negatives are what made the diagnosis certain: any rival mechanism had to explain why full
 syncs were clean and why the two preconditions were both required.
 
 **Adversarial refutation attempts a rigorous investigator runs** (each is a prediction the
-rival mechanism makes, checked against reality):
+rival mechanism makes, checked against reality). The following probes are reconstructed from
+the accepted mechanism — no record of the original probes survives in-repo; each "Observed" is
+what the mechanism entails, not recorded history:
 
 1. *Rival: watermark timing bug* ("the watermark was stamped too new, burying recent plays").
    If true, one manual full sync should cure a show permanently, because the missed plays would

@@ -1,6 +1,6 @@
 ---
 name: monitorr-change-control
-description: Git/branch/release discipline for monitorr — dev-branch flow, immediate commit+push, merge-to-main message rules, docs-in-same-commit, the full release checklist (version bump, tag, release.yml, version guard, changelog extraction), and the change-control gates including the three discipline rules (adversarial review for anchor changes, never trust volatile Plex state, mechanism-explaining changelog). NOT for changelog/doc house style → monitorr-docs-and-writing; NOT for running CI/tests locally → monitorr-build-and-env / monitorr-validation-and-qa; NOT for incident stories → monitorr-failure-archaeology.
+description: Git/branch/release discipline for monitorr — dev-branch flow, immediate commit+push, merge-to-main message rules, docs-in-same-commit, the release checklist (version bump, tag, version guard, changelog extraction), the change-control gates and the three discipline rules (adversarial review for anchor changes, never trust volatile Plex state, mechanism-explaining changelog). NOT for changelog/doc house style → monitorr-docs-and-writing; NOT for running CI/tests locally → monitorr-build-and-env / monitorr-validation-and-qa; NOT for incident stories → monitorr-failure-archaeology.
 ---
 
 # monitorr change control
@@ -80,9 +80,9 @@ publishing. Everything below runs from the repo root.
    ```bash
    git commit -am "chore: release vX.Y.Z" && git push
    ```
-4. **Wait for CI green on `dev`** (`.github/workflows/ci.yml`: quality = ruff check + format
-   check + mypy + pytest with `uv sync --frozen`; image = multi-arch build, no push). Local
-   equivalent: `uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.
+4. **Wait for CI green on `dev`** (`.github/workflows/ci.yml`: quality gates + multi-arch
+   image build, no push). Local equivalent: the pre-push gate in `monitorr-validation-and-qa`
+   §2, which mirrors ci.yml's order.
 5. **Merge to `main`** per §2 (descriptive message; user must have asked).
 6. **Tag from `main` and push the tag** — this is the publish trigger:
    ```bash

@@ -105,13 +105,17 @@ Value encodings worth knowing when reading raw rows:
 - `last_sync` JSON shape (what `sync._run` persists):
   `{"at": "<ISO>", "mode": "full"|"incremental", "shows": N, "matched": N, "normalized": N,
   "searched": N}`.
-- `deletion_log.reason` values: `ahead` / `keep` (window trims, `engine/window.py`) and
+- `deletion_log.reason` values: `ahead` / `keep` (window trims, `engine/window.py`),
+  `normalize` (auto-normalize, `engine/actions.py::normalize_to_pilot`), and
   `completed` / `dormant` / `grace_watched` / `grace_unwatched` (grace sweep,
   `engine/grace.py`).
 - `series_override.policy_json` is a **partial** policy: fields merge over the global policy
   (`effective_policy`). Field semantics: `monitorr-config-and-flags`.
 
 ## Log-based diagnosis
+
+This section is the library's **owner of the verified log-format inventory**; sibling skills
+quote only the individual strings their steps grep for and cross-reference here.
 
 Set `MONITORR_LOG_LEVEL=DEBUG` (env var, e.g. in compose) and restart. Log line format is
 `%(asctime)s %(levelname)s %(name)s: %(message)s` (`src/monitorr/logging.py`); logger names are
@@ -135,7 +139,15 @@ What DEBUG unlocks (verified message formats, quoted from the code):
   `"history sweep: pages=%d episode_rows=%d shows=%d per_show=%s"` (what the history endpoint
   actually returned per show).
 - Re-anchoring is logged at INFO by the window:
-  `"re-anchored tvdb=%s from S%02dE%02d to S%02dE%02d (persisted furthest watch)"`.
+  `"re-anchored tvdb=%s from S%02dE%02d to S%02dE%02d (persisted furthest watch)"`; the arm
+  gate closing is INFO too:
+  `"GET window not armed for tvdb=%s (inactive past dormant/unwatched grace)"`.
+- `monitorr.engine.actions` (`engine/actions.py`) — every write/preview at INFO. Dry-run:
+  `"[dry-run] would monitor %d episodes"`, `"[dry-run] would unmonitor %d episodes"`,
+  `"[dry-run] would search %d episodes"`, `"[dry-run] would set monitored seasons on=%s off=%s"`,
+  `"[dry-run] would cancel queued downloads of %d episodes"`,
+  `"[dry-run] would delete S%02dE%02d (%s)"`. Real mode: `"deleted S%02dE%02d (%s)"`,
+  `"queued download cancelled (episodeId=%s); still seeding"`.
 
 Grab logs with `docker logs monitorr --since 1h` (add `2>&1 | grep 'tvdb=12345'` to follow one
 show through a whole sync).
@@ -152,7 +164,7 @@ the evidence each script produces.
 | Sync appears stuck / never incremental / never full | `dump_state.py` | `history_watermark` / `last_full_sync` / `last_sync` ages and mode |
 | New plays ignored forever after a server switch | `check_invariants.py` | Check (d): future or stale watermark (incident beb757c) |
 | Show downloads/deletes in a loop (oscillation) | `show_state.py` + `dump_state.py` | Activity age vs `dormant_days` / `grace_unwatched_days` (the `_is_armed` gate); repeated deletion_log rows with the same episode |
-| Wrong episodes previewed for deletion | `dump_state.py` + `show_state.py` | `reason` column (`ahead`/`keep`/grace reasons) tells which mechanism chose each episode |
+| Wrong episodes previewed for deletion | `dump_state.py` + `show_state.py` | `reason` column (`ahead`/`keep`/`normalize`/grace reasons) tells which mechanism chose each episode |
 | DB suspected inconsistent after crash/restore | `check_invariants.py` | Any FAIL line; (e) catches a DB from a different app version |
 | Show ignored by monitorr | `show_state.py` | Override `enabled: NO`, or no watches + auto-normalize (pilot-only is expected) |
 
@@ -178,10 +190,10 @@ Everything above was read from the code at v1.6.1 (2026-07-02). Re-verify before
 | Setting keys | `grep -n '= "' src/monitorr/constants.py` |
 | `last_sync` key + JSON shape | `grep -n "_LAST_SYNC\|set_setting(\s*_LAST_SYNC" src/monitorr/sync.py` |
 | Dry-run encoding (`"1"`/`"0"`, absent = ON) | `grep -n "def get_dry_run\|def set_dry_run" -A 3 src/monitorr/engine/policy.py` |
-| Deletion reasons | `grep -rn '"ahead"\|"keep"\|"completed"\|"dormant"\|"grace_' src/monitorr/engine/` |
+| Deletion reasons | `grep -rn '"ahead"\|"keep"\|"normalize"\|"completed"\|"dormant"\|"grace_' src/monitorr/engine/` |
 | Default DB path (`/config/monitorr.db`) | `grep -n "config_dir\|db_path" src/monitorr/config.py` |
 | WAL mode | `grep -n "journal_mode" src/monitorr/db.py` |
-| Quoted log message formats | `grep -n "logger.debug\|logger.info" src/monitorr/engine/window.py src/monitorr/sync.py src/monitorr/plex/client.py` |
+| Quoted log message formats | `grep -n "logger.debug\|logger.info" src/monitorr/engine/window.py src/monitorr/engine/actions.py src/monitorr/sync.py src/monitorr/plex/client.py` |
 | Container name / bind mount | `grep -n "container_name\|/config" docker-compose.yml` |
 | `python3` in the image | `grep -n "FROM python" Dockerfile` |
 

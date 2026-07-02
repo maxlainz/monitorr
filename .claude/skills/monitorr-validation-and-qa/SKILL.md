@@ -2,11 +2,12 @@
 name: monitorr-validation-and-qa
 description: >-
   How to run and write monitorr tests: pytest/uv commands, the pre-push gate (ruff check, ruff
-  format --check, mypy, pytest in CI order), the test-suite map, the three faking styles (respx
-  HTTP mocking, monkeypatch-where-used, pure unit), a recipe for adding an engine regression test,
-  mypy-strict-on-tests, coverage gaps. Use when adding/running/fixing tests or validating a change.
-  NOT for toolchain/uv/Docker setup (use monitorr-build-and-env), what the engine SHOULD compute
-  (use monitorr-window-engine-reference), or git/release flow (use monitorr-change-control).
+  format --check, mypy, pytest in CI order), the test-suite map, the three faking styles (respx,
+  monkeypatch-where-used, pure unit), the engine regression-test recipe, mypy-strict-on-tests,
+  coverage gaps. Use when adding/running/fixing tests or validating a change. NOT for
+  property-based/Hypothesis test design → monitorr-research-frontier; toolchain/uv/Docker setup
+  → monitorr-build-and-env; what the engine SHOULD compute → monitorr-window-engine-reference;
+  git/release flow → monitorr-change-control.
 ---
 
 # monitorr — validation and QA
@@ -64,7 +65,7 @@ uses `uv sync --frozen`; the lockfile rule and toolchain details live in `monito
 ## 3. Test-suite map
 
 Counts as of 2026-07-02 (v1.6.1); recount per file with
-`grep -c "^def test_\|^async def test_" tests/<file>`.
+`grep -Ec '^(async )?def test_' tests/<file>`.
 
 | File | Subsystem under test | Tests | Faking style | Representative tests |
 |---|---|---|---|---|
@@ -224,7 +225,8 @@ Verified against the repo at v1.6.1, 2026-07-02. Re-verify before trusting:
 
 | Fact | Re-verification command |
 |---|---|
-| Test count (108) and per-file counts | `for f in tests/test_*.py; do echo "$f: $(grep -c '^def test_\|^async def test_' $f)"; done` |
+| Test count (108, total) | `grep -rEc "^(async )?def test_" tests/*.py \| awk -F: '{s+=$2} END {print s}'` |
+| Per-file test counts | `for f in tests/test_*.py; do echo "$f: $(grep -Ec '^(async )?def test_' $f)"; done` |
 | Test file list (11 + conftest) | `ls tests/` |
 | asyncio auto mode, testpaths | `grep -A2 'tool.pytest' pyproject.toml` |
 | mypy strict over tests | `grep -A3 'tool.mypy' pyproject.toml` |

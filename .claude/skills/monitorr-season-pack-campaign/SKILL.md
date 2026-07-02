@@ -55,7 +55,8 @@ and a cancel batch for the same show.
 The guard runs at the end of every `apply_window` — sync, poller and webhook paths all
 funnel through it (`window.py:86` is the single entry point). Sonarr imports a download only
 after it *completes*; a pack large enough to matter takes longer than the guard's revisit
-period (poller trigger 30 s during live viewing; sync 6 h otherwise). And even if a pack
+period (poller trigger 30 s during live viewing; sync 6 h otherwise) (unverified —
+Sonarr/client runtime behavior; confirm in Phase 0/1). And even if a pack
 completed and imported between visits, the ahead/behind trims (`window.py:226-249`) delete
 the surplus files immediately after. Correctness holds; the loop is a pure waste problem.
 
@@ -68,7 +69,7 @@ the surplus files immediately after. Correctness holds; the loop is a pure waste
   leaves a torrent seeding/paused in the client. Sonarr forgets it; nothing cleans it up.
   They accumulate one per cycle per affected show until the user intervenes.
 - **Wasted bandwidth**: each grab downloads part (sometimes most) of a multi-GB pack before
-  the cancel drops it.
+  the cancel drops it (unverified — Sonarr/client runtime behavior; confirm in Phase 0/1).
 
 ### Why it was ACCEPTED in 1.6.1, not fixed
 
@@ -175,7 +176,7 @@ function; `store.record_deletion` is called only from `delete_episode`
 `normalize`, `completed`, `dormant`, `grace_watched`, `grace_unwatched`. Confirm on your DB:
 
 ```
-sqlite3 ./config/monitorr.db "SELECT DISTINCT reason FROM deletion_log;"
+sqlite3 "file:./config/monitorr.db?mode=ro" "SELECT DISTINCT reason FROM deletion_log;"
 ```
 
 Measurement is therefore **log-based only**, and Docker log rotation can eat your baseline.

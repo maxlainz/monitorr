@@ -2,12 +2,12 @@
 name: monitorr-window-engine-reference
 description: >-
   Canonical reference for src/monitorr/engine/ (window.py, grace.py, policy.py, actions.py) —
-  the ONE home of the exact GET/KEEP/anchor/grace formulas with file:line anchors. Use when
-  reading, changing, testing or predicting apply_window, the grace sweep, policy resolution,
-  Always-Have matching, normalize-to-pilot, dry-run gating, the season-pack queue guard, or the
-  _is_armed gate. NOT for Plex/Sonarr API details → monitorr-plex-sonarr-reference; WHY the
-  invariants exist → monitorr-architecture-contract; incident stories →
-  monitorr-failure-archaeology; env/Policy editing surface → monitorr-config-and-flags.
+  the ONE home of the exact GET/KEEP/anchor/grace formulas. Use when reading, changing, testing
+  or predicting apply_window, the grace sweep, policy resolution, Always-Have matching,
+  normalize-to-pilot, dry-run gating, the season-pack queue guard, or the _is_armed gate. NOT
+  for Plex/Sonarr API details → monitorr-plex-sonarr-reference; WHY invariants exist →
+  monitorr-architecture-contract; incident stories → monitorr-failure-archaeology; env/Policy
+  editing → monitorr-config-and-flags.
 ---
 
 # monitorr window engine reference
@@ -79,7 +79,7 @@ the episode ids it searched (used by sync, step 12 of §5). Numbered steps in ex
    `anchor.season <= season_number <= anchor.season + get_count`; not armed → all off. Applied via
    `actions.set_seasons_monitored(...)` (window.py:172-179), which returns True only when Sonarr
    was actually PUT (always False in dry-run, actions.py:28-42; idempotence check in
-   `sonarr/client.py:145`). If True, Sonarr may have cascaded the season flags to episodes,
+   `sonarr/client.py:159-166`, def at :145). If True, Sonarr may have cascaded the season flags to episodes,
    invalidating the snapshot → re-fetch `real` and re-resolve `idx`; anchor vanished mid-flight →
    return `set()`. Order matters: season flags before per-episode flags is the cascade-proof
    order (fix 31fa9d5).
@@ -174,22 +174,13 @@ What ignores what:
 
 ## 3. Policy resolution (policy.py)
 
-`Policy` fields (policy.py:24-37) — the definition of record. Where each is edited (UI/forms) is
-owned by `monitorr-config-and-flags`.
-
-| Field | Type | Default | Constraint |
-|---|---|---|---|
-| `get_count` | int | 1 | `ge=0` |
-| `get_unit` | `Literal["episodes","seasons"]` | `"episodes"` | — |
-| `keep_count` | int | 1 | `ge=0` |
-| `keep_unit` | `Literal["episodes","seasons"]` | `"episodes"` | — |
-| `always_have` | list[str] | `["S01E01"]` | patterns per grammar below; invalid ones ignored |
-| `grace_watched_days` | int \| None | 7 | None disables |
-| `grace_unwatched_days` | int \| None | 365 | None disables; also gates `_is_armed` |
-| `dormant_days` | int \| None | None (disabled) | None disables; also gates `_is_armed` |
-| `grace_completed_days` | int \| None | 30 (ENABLED — the riskiest default with dry-run OFF) | None disables |
-| `search_on_get` | bool | True | — |
-| `auto_normalize` | bool | True | — |
+The 11 `Policy` fields (policy.py:24-37) — types, defaults, constraints, and where each is
+edited — are owned by `monitorr-config-and-flags` (§3 there is the definition of record). This
+file owns each field's RUNTIME semantics: `get_count`/`get_unit` drive GET (§1 step 9),
+`keep_count`/`keep_unit` drive KEEP (§1 step 13), `always_have` the protection set (grammar
+below), `grace_watched_days`/`grace_unwatched_days`/`dormant_days`/`grace_completed_days` the
+sweep (§2) — with the unwatched/dormant pair also gating `_is_armed` (§1 step 7) —
+`search_on_get` §1 step 11, `auto_normalize` §4.
 
 - `effective_policy(tvdb_id) -> (Policy, enabled)` (policy.py:51-61): global policy is the
   `policy` setting-table JSON, or `Policy()` defaults if unset. No `series_override` row →
@@ -219,7 +210,7 @@ do not. With `dry_run=True` Sonarr is never called — intent is logged, deletio
 | Action (line) | Real effect | Dry-run behavior |
 |---|---|---|
 | `monitor_episodes` (17) | `set_monitored(ids, True)` | log only |
-| `set_seasons_monitored` (28) | GET-modify-PUT of `seasons[].monitored`; returns True iff a PUT was issued (idempotent — no PUT when flags already match, `sonarr/client.py:145`) | log only; **returns False ALWAYS** — the contract callers rely on: a False return means "no cascade happened, the episode snapshot is still valid, do not re-fetch" |
+| `set_seasons_monitored` (28) | GET-modify-PUT of `seasons[].monitored`; returns True iff a PUT was issued (idempotent — no PUT when flags already match, `sonarr/client.py:159-166`) | log only; **returns False ALWAYS** — the contract callers rely on: a False return means "no cascade happened, the episode snapshot is still valid, do not re-fetch" |
 | `unmonitor_episodes` (45) | `set_monitored(ids, False)` | log only |
 | `search_episodes` (62) | POST EpisodeSearch command | log only |
 | `cancel_downloads` (73) | for each queued item whose `episode_id` is wanted: `DELETE /queue/{id}?removeFromClient=false&blocklist=false` (torrent keeps seeding) | log only (queue not even read) |
@@ -332,7 +323,7 @@ Re-verify before trusting:
 | Monitoring invariant line | `grep -n "monitor_ids = " src/monitorr/engine/window.py` |
 | Grace order & predicates | `grep -n "grace_completed_days\|dormant_days\|kept_keys\|grace_watched_days\|grace_unwatched_days" src/monitorr/engine/grace.py` |
 | Caught-up formula | `grep -n -A6 "_is_caught_up" src/monitorr/engine/grace.py` |
-| Policy fields & defaults | `grep -n -A14 "class Policy" src/monitorr/engine/policy.py` |
+| Policy field names referenced in §3 (table of record: `monitorr-config-and-flags`) | `grep -n -A14 "class Policy" src/monitorr/engine/policy.py` |
 | Always-Have grammar | `grep -n "_PATTERN = " src/monitorr/engine/policy.py` |
 | Dry-run default / threshold clamp | `grep -n "raw == \"1\"\|0.9" src/monitorr/engine/policy.py && grep -n "max(0.05" src/monitorr/web/routes.py` |
 | set_seasons_monitored False-in-dry-run contract | `grep -n -B2 -A6 "async def set_seasons_monitored" src/monitorr/engine/actions.py` |
